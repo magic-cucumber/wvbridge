@@ -4,6 +4,7 @@ project(wvbridge)
 # 设置C++标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # 设置Objective-C++编译器
 enable_language(OBJCXX)

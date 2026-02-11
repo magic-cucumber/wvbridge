@@ -15,18 +15,18 @@ kotlin {
 
 val processBuild = tasks.register<Exec>("processBuild") {
     onlyIf {
-        System.getProperty("os.name").startsWith("Mac")
+        System.getProperty("os.name").startsWith("Linux")
     }
     workingDir = project.file("native")
     environment("JAVA_HOME", Jvm.current().javaHome.absolutePath)
     commandLine(
-        "zsh", "-c",
+        "bash", "-c",
         """
             mkdir -p build && \
             cd build && \
             cmake .. && \
             make &&\
-            echo $(shasum -a 256 lib/libwvbridge.dylib | cut -d ' ' -f 1) > build-macos.hash
+            echo $(shasum -a 256 lib/libwvbridge.so | cut -d ' ' -f 1) > build-linux.hash
         """.trimIndent()
     )
 }
@@ -34,8 +34,8 @@ val processBuild = tasks.register<Exec>("processBuild") {
 // Configure JVM processResources task
 tasks.named<ProcessResources>("processResources") {
     dependsOn(processBuild)
-    from(project.file("native/build/lib/libwvbridge.dylib"))
-    from(project.file("native/build/build-macos.hash"))
+    from(project.file("native/build/lib/libwvbridge.so"))
+    from(project.file("native/build/build-linux.hash"))
 }
 
 

@@ -43,10 +43,11 @@ fun Project.library(
             compileSdk = 35
             minSdk = 28
         }
-        iosArm64()
-        iosSimulatorArm64()
-        wasmJs { browser() }
-        js { browser() }
+
+//        iosArm64()
+//        iosSimulatorArm64()
+//        wasmJs { browser() }
+//        js { browser() }
 
         block()
     }
