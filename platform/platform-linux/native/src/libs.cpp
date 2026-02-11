@@ -273,7 +273,8 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
         }
 
         if (ctx->webview) {
-            // 让 WebView 跟随其顶层窗口(surface)的真实尺寸分配，而不是用 size_request 固定。
+            int scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(ctx->window));
+            gtk_widget_set_size_request(GTK_WIDGET(ctx->webview), tw / scale_factor, th / scale_factor);
             gtk_widget_queue_resize(GTK_WIDGET(ctx->webview));
         }
 
