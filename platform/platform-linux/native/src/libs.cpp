@@ -33,8 +33,6 @@ struct WebViewContext {
 
 namespace {
 
-    std::atomic_int g_webview_ref_count{0};
-
     int clamp_dim(jint v) {
         return (v < 1) ? 1 : (int) v;
     }
@@ -89,25 +87,10 @@ namespace {
 } // namespace
 
 API_EXPORT(jlong, initAndAttach) {
-    // 1) 维护全局引用计数
-    const int old = g_webview_ref_count.fetch_add(1, std::memory_order_acq_rel);
-    if (old == 0) {
-        // 2) 首次创建时初始化 GTK 主线程
+    // 确保 GTK 主线程/主循环已初始化（只初始化一次）。
+    if (!wvbridge::gtk_is_inited()) {
         wvbridge::gtk_init();
     }
-
-    // 失败路径自动回滚引用计数；成功返回前 dismiss
-    struct RefCountRollback {
-        bool active = true;
-        ~RefCountRollback() {
-            if (!active) return;
-            const int now = g_webview_ref_count.fetch_sub(1, std::memory_order_acq_rel) - 1;
-            if (now == 0) {
-                wvbridge::gtk_stop();
-            }
-        }
-        void dismiss() { active = false; }
-    } rollback;
 
     ::Window parent_xid = 0;
 
@@ -219,7 +202,9 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_set_vexpand(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_halign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_set_valign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
-        gtk_widget_set_size_request(GTK_WIDGET(ctx->webview), (int) pw, (int) ph);
+        // 注意：不要用 gtk_widget_set_size_request() 强行指定 WebView 尺寸。
+        // size_request 使用“逻辑像素”，在 HiDPI(scale factor>1) 下会导致实际渲染尺寸被放大，
+        // 从而出现 WebView 比 AWT 宿主窗口更大、被裁剪且无法滚动的问题。
 
         gtk_window_set_child(GTK_WINDOW(ctx->window), GTK_WIDGET(ctx->webview));
         // present 触发 map/realize，确保有 GdkSurface
@@ -246,9 +231,6 @@ API_EXPORT(jlong, initAndAttach) {
         throw_jni_exception(env, "java/lang/RuntimeException", "Init WebView/attach to AWT failed (X11 only)");
         return 0;
     }
-
-    // 成功：不回滚引用计数
-    rollback.dismiss();
 
     // 2) 返回给 JVM 作为 handle
     return reinterpret_cast<jlong>(ctx);
@@ -291,7 +273,7 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
         }
 
         if (ctx->webview) {
-            gtk_widget_set_size_request(GTK_WIDGET(ctx->webview), tw, th);
+            // 让 WebView 跟随其顶层窗口(surface)的真实尺寸分配，而不是用 size_request 固定。
             gtk_widget_queue_resize(GTK_WIDGET(ctx->webview));
         }
 
@@ -339,33 +321,38 @@ API_EXPORT(void, close0, jlong handle) {
     });
 
     delete ctx;
-
-    // 1) 引用计数 -1，若归零则停止 GTK 线程
-    const int now = g_webview_ref_count.fetch_sub(1, std::memory_order_acq_rel) - 1;
-    if (now == 0) {
-        wvbridge::gtk_stop();
-    }
 }
 
 API_EXPORT(void, loadUrl, jlong handle, jstring url) {
-    const char *nativeString = env->GetStringUTFChars(url, nullptr);
-    if (nativeString == nullptr) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    if (url == nullptr) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "url is null");
         return;
     }
 
     auto *ctx = (WebViewContext *) handle;
-    if (!ctx) {
-        env->ReleaseStringUTFChars(url, nativeString);
+    if (!ctx) return;
+
+    const char *nativeString = env->GetStringUTFChars(url, nullptr);
+    if (nativeString == nullptr) {
+        // OOM 或 JVM 已抛异常
         return;
     }
 
-    if (handle == 0) {
-        env->ReleaseStringUTFChars(url, nativeString);
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
+    // 必须同步：否则 close0 可能先 delete ctx，导致异步闭包访问悬空指针。
+    wvbridge::gtk_run_on_thread_sync([&] {
+        if (!ctx || ctx->closing.load(std::memory_order_acquire)) return;
+        if (!ctx->webview) return;
 
-    // TODO: implemented later
+        const char *uri = nativeString;
+        if (!uri || uri[0] == '\0') uri = "about:blank";
+
+        webkit_web_view_load_uri(ctx->webview, uri);
+    });
+
     env->ReleaseStringUTFChars(url, nativeString);
 }
 
