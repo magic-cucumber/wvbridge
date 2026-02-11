@@ -43,6 +43,10 @@ pkg_check_modules(WEBKIT REQUIRED webkitgtk-6.0)
 
 set(SOURCES
         src/libs.cpp
+        src/utils.h
+        src/utils.cpp
+        src/gtk.h
+        src/gtk.cpp
 )
 
 # 创建共享库

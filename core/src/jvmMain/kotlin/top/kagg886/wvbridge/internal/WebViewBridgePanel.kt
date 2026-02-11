@@ -2,6 +2,7 @@ package top.kagg886.wvbridge.internal
 
 import top.kagg886.wvbridge.NavigationHandler
 import java.awt.Canvas
+import java.awt.Graphics
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.HierarchyEvent
@@ -40,6 +41,13 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
                 close()
             }
         }
+    }
+
+    override fun paint(g: Graphics?) {
+        super.paint(g)
+        if (g == null) return
+        g.color = java.awt.Color.GRAY
+        g.drawRect(0, 0, width - 1, height - 1)
     }
 
     override fun addNotify() {

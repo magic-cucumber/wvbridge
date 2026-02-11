@@ -1,5 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    application
 }
 
 group = "top.kagg886.wvbridge.demo"
@@ -22,4 +23,8 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+application {
+    mainClass.set("MainKt") // 注意：文件名是 main.kt，类名通常是 MainKt
 }
