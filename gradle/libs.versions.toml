@@ -1,0 +1,16 @@
+[versions]
+kotlin = "2.3.10"
+agp = "8.12.3"
+maven-publish = "0.34.0"
+compose = "1.10.1"
+
+[libraries]
+# Gradle plugin artifacts (用于 buildSrc / build-logic 编译期依赖)
+foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+maven-publish-gradle-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "maven-publish" }
+compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin", version.ref = "compose" }
+compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
+runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
+ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
