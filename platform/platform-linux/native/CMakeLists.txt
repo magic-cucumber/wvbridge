@@ -47,6 +47,10 @@ set(SOURCES
         src/utils.cpp
         src/gtk.h
         src/gtk.cpp
+        src/navigation.h
+        src/navigation.cpp
+        src/progress.h
+        src/progress.cpp
 )
 
 # 创建共享库

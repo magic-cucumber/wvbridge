@@ -26,7 +26,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private val navigationHandler = mutableMapOf<Int, MutableSet<NavigationHandler>>()
 
     init {
-        isFocusable = true
         Runtime.getRuntime().addShutdownHook(Thread {
             if (handle != 0L) {
                 close0(handle)

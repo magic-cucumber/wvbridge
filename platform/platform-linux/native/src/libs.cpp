@@ -13,6 +13,8 @@
 #include <gdk/x11/gdkx.h>
 
 #include "gtk.h"
+#include "navigation.h"
+#include "progress.h"
 #include "utils.h"
 
 struct WebViewContext {
@@ -27,6 +29,12 @@ struct WebViewContext {
 
     GtkWidget *window = nullptr;
     WebKitWebView *webview = nullptr;
+
+    // 导航拦截（JNI handler + WebKit decide-policy 信号）
+    wvbridge::NavigationState* nav = nullptr;
+
+    // 进度监听（JNI listener + estimated-load-progress）
+    wvbridge::ProgressState* progress = nullptr;
 
     // 关闭流程开始后置 true；用于拒绝后续 update 排队，避免 close0 后异步访问已销毁对象。
     std::atomic_bool closing{false};
@@ -94,6 +102,14 @@ namespace {
 
     void destroy_ctx_on_gtk_thread(WebViewContext *ctx) {
         if (!ctx) return;
+
+        if (ctx->webview && ctx->nav) {
+            // best-effort：尽早断开信号，避免销毁过程中触发回调。
+            wvbridge::navigation_uninstall(ctx->webview, ctx->nav);
+        }
+        if (ctx->webview && ctx->progress) {
+            wvbridge::progress_uninstall(ctx->webview, ctx->progress);
+        }
 
         // GtkWindow 关闭后，会连带销毁子树（WebView）。
         if (ctx->window) {
@@ -192,6 +208,8 @@ API_EXPORT(jlong, initAndAttach) {
     // 2) 在 GTK 线程同步创建 WebView，并 reparent 到 AWT 宿主窗口
     auto *ctx = new WebViewContext();
     ctx->parent_xid = parent_xid;
+    ctx->nav = wvbridge::navigation_state_new(env);
+    ctx->progress = wvbridge::progress_state_new(env);
 
     bool ok = true;
 
@@ -225,6 +243,12 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_set_vexpand(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_halign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_set_valign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
+
+        // 安装导航拦截信号（decide-policy）。此处先安装信号，handler 可稍后由 setNavigationHandler() 设置。
+        wvbridge::navigation_install(ctx->webview, ctx->nav, &ctx->closing);
+
+        // 安装进度信号（notify::estimated-load-progress）。listener 可稍后由 setProgressListener() 设置。
+        wvbridge::progress_install(ctx->webview, ctx->progress, &ctx->closing);
         // 注意：不要用 gtk_widget_set_size_request() 强行指定 WebView 尺寸。
         // size_request 使用“逻辑像素”，在 HiDPI(scale factor>1) 下会导致实际渲染尺寸被放大，
         // 从而出现 WebView 比 AWT 宿主窗口更大、被裁剪且无法滚动的问题。
@@ -253,6 +277,10 @@ API_EXPORT(jlong, initAndAttach) {
 
     if (!ok) {
         wvbridge::gtk_run_on_thread_sync([&] { destroy_ctx_on_gtk_thread(ctx); });
+        wvbridge::navigation_state_destroy(ctx->nav);
+        ctx->nav = nullptr;
+        wvbridge::progress_state_destroy(ctx->progress);
+        ctx->progress = nullptr;
         delete ctx;
         throw_jni_exception(env, "java/lang/RuntimeException", "Init WebView/attach to AWT failed (X11 only)");
         return 0;
@@ -347,6 +375,12 @@ API_EXPORT(void, close0, jlong handle) {
         }
     });
 
+    wvbridge::navigation_state_destroy(ctx->nav);
+    ctx->nav = nullptr;
+
+    wvbridge::progress_state_destroy(ctx->progress);
+    ctx->progress = nullptr;
+
     delete ctx;
 }
 
@@ -392,7 +426,20 @@ API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
     auto *ctx = (WebViewContext *) handle;
     if (!ctx) return;
 
-    (void) listener;
+    // listener 允许为 null：表示不监听。
+    if (!ctx->progress) {
+        ctx->progress = wvbridge::progress_state_new(env);
+        // 此时 webview 已存在：安装信号（若已安装会自动断开重连）。
+        if (ctx->webview) {
+            wvbridge::gtk_run_on_thread_sync([&] {
+                if (!ctx || ctx->closing.load(std::memory_order_acquire)) return;
+                if (!ctx->webview) return;
+                wvbridge::progress_install(ctx->webview, ctx->progress, &ctx->closing);
+            });
+        }
+    }
+
+    wvbridge::progress_set_listener(env, ctx->progress, listener);
 }
 
 //private external fun setNavigationHandler(webview: Long, handler: Function<String, Boolean>)
@@ -404,5 +451,10 @@ API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
     auto *ctx = (WebViewContext *) handle;
     if (!ctx) return;
 
-    (void) handler;
+    // handler 允许为 null：表示不拦截（默认放行）。
+    if (!ctx->nav) {
+        ctx->nav = wvbridge::navigation_state_new(env);
+    }
+
+    wvbridge::navigation_set_handler(env, ctx->nav, handler);
 }
