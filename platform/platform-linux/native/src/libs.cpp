@@ -2,6 +2,7 @@
 #include <jawt_md.h>
 
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 
 #include <algorithm>
 #include <atomic>
@@ -67,6 +68,28 @@ namespace {
         }
 
         if (fn) fn();
+    }
+
+    // 仅针对 X11：设置 EWMH 属性，避免这个用于嵌入的 GtkWindow 被 GNOME/WM 当作独立应用窗口展示。
+    void x11_set_ewmh_embed_hints(::Display *dpy, ::Window win) {
+        if (!dpy || win == 0) return;
+
+        const Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+        const Atom skip_taskbar = XInternAtom(dpy, "_NET_WM_STATE_SKIP_TASKBAR", False);
+        const Atom skip_pager = XInternAtom(dpy, "_NET_WM_STATE_SKIP_PAGER", False);
+
+        Atom states[2] = {skip_taskbar, skip_pager};
+        XChangeProperty(dpy, win, net_wm_state, XA_ATOM, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char *>(states), 2);
+
+        // 补充 window type：utility 一般不会出现在任务栏/概览中（不同 WM 行为略有差异）。
+        const Atom net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+        const Atom utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+
+        XChangeProperty(dpy, win, net_wm_window_type, XA_ATOM, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char *>(const_cast<Atom *>(&utility)), 1);
+
+        XFlush(dpy);
     }
 
     void destroy_ctx_on_gtk_thread(WebViewContext *ctx) {
@@ -218,6 +241,9 @@ API_EXPORT(jlong, initAndAttach) {
 
         // 将 GTK 窗口 reparent 到 AWT drawable 内部，形成“嵌入式”渲染
         x11_ignore_errors([&] {
+            // 设置 EWMH 属性：让这个用于嵌入的窗口不出现在 GNOME 概览/任务栏中。
+            x11_set_ewmh_embed_hints(ctx->xdisplay, ctx->child_xid);
+
             XReparentWindow(ctx->xdisplay, ctx->child_xid, ctx->parent_xid, 0, 0);
             XMoveResizeWindow(ctx->xdisplay, ctx->child_xid, 0, 0, pw, ph);
             XMapRaised(ctx->xdisplay, ctx->child_xid);
