@@ -5,6 +5,8 @@ import java.awt.Canvas
 import java.awt.Graphics
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.HierarchyEvent
 import java.io.File
 import java.nio.file.Files
@@ -22,6 +24,8 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private var handle = 0L
     private val progressListener = mutableSetOf<Consumer<Float>>()
     private val navigationHandler = mutableMapOf<Int, MutableSet<NavigationHandler>>()
+
+    private val shutdownHook = Thread { close0(handle) }
 
     init {
         addComponentListener(object : ComponentAdapter() {
@@ -56,12 +60,13 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         SwingUtilities.invokeLater {
             handle = initAndAttach()
             initialize()
+            Runtime.getRuntime().addShutdownHook(shutdownHook)
             setProgressListener(handle) { progress ->
                 progressListener.forEach {
                     it.accept(progress)
                 }
             }
-            setNavigationHandler(handle) { url->
+            setNavigationHandler(handle) { url ->
                 if (navigationHandler.isEmpty()) return@setNavigationHandler true
                 val list = navigationHandler.entries.sortedBy { it.key }.flatMap { it.value.toList() }
                 !list.any { it.handleNavigation(url) === NavigationHandler.NavigationResult.DENIED }
@@ -82,12 +87,12 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         progressListener.remove(consumer)
     }
 
-    fun addNavigationHandler(priority: Int = 0,handle: NavigationHandler) {
+    fun addNavigationHandler(priority: Int = 0, handle: NavigationHandler) {
         val queue = navigationHandler.getOrPut(priority) { mutableSetOf() }
         queue.add(handle)
     }
 
-    fun removeNavigationHandler(priority: Int = 0,handle: NavigationHandler) {
+    fun removeNavigationHandler(priority: Int = 0, handle: NavigationHandler) {
         val queue = navigationHandler.getOrPut(priority) { mutableSetOf() }
         queue.remove(handle)
         if (queue.isEmpty()) {
@@ -98,6 +103,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     fun loadUrl(url: String) = loadUrl(handle, url)
 
     override fun close() = close0(handle).apply {
+        Runtime.getRuntime().removeShutdownHook(shutdownHook)
         handle = 0
     }
 
@@ -132,7 +138,8 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
             tmpFile.deleteOnExit()
 
             // 将资源里的库写到临时文件
-            val stream = WebViewBridgePanel::class.java.getResourceAsStream("/$name.$ext") ?: error("Library resource /$name.$ext not found")
+            val stream = WebViewBridgePanel::class.java.getResourceAsStream("/$name.$ext")
+                ?: error("Library resource /$name.$ext not found")
             stream.use { tmpFile.writeBytes(it.readAllBytes()) }
 
             System.load(tmpFile.absolutePath)
