@@ -25,9 +25,13 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private val progressListener = mutableSetOf<Consumer<Float>>()
     private val navigationHandler = mutableMapOf<Int, MutableSet<NavigationHandler>>()
 
-    private val shutdownHook = Thread { close0(handle) }
-
     init {
+        isFocusable = true
+        Runtime.getRuntime().addShutdownHook(Thread {
+            if (handle != 0L) {
+                close0(handle)
+            }
+        })
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 if (handle == 0L) return
@@ -60,7 +64,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         SwingUtilities.invokeLater {
             handle = initAndAttach()
             initialize()
-            Runtime.getRuntime().addShutdownHook(shutdownHook)
             setProgressListener(handle) { progress ->
                 progressListener.forEach {
                     it.accept(progress)
@@ -103,7 +106,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     fun loadUrl(url: String) = loadUrl(handle, url)
 
     override fun close() = close0(handle).apply {
-        Runtime.getRuntime().removeShutdownHook(shutdownHook)
         handle = 0
     }
 
