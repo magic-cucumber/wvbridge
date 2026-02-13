@@ -26,11 +26,13 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private val navigationHandler = mutableMapOf<Int, MutableSet<NavigationHandler>>()
 
     init {
-        Runtime.getRuntime().addShutdownHook(Thread {
-            if (handle != 0L) {
-                close0(handle)
-            }
-        })
+        if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
+            Runtime.getRuntime().addShutdownHook(Thread {
+                if (handle != 0L) {
+                    close0(handle)
+                }
+            })
+        }
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 if (handle == 0L) return
