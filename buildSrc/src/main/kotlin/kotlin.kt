@@ -1,6 +1,4 @@
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
-import com.android.build.api.dsl.androidLibrary
-import com.android.build.gradle.LibraryExtension
 import org.gradle.api.Project
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
@@ -38,11 +36,21 @@ fun Project.library(
         }
         jvmToolchain(17)
         jvm()
-        androidLibrary {
+
+//        androidTarget()
+        extensions.configure<KotlinMultiplatformAndroidLibraryTarget>("android") {
             namespace = group.toString()
             compileSdk = 35
             minSdk = 28
         }
+
+
+
+//        android {
+//            namespace = group.toString()
+//            compileSdk = 35
+//            minSdk = 28
+//        }
 
 //        iosArm64()
 //        iosSimulatorArm64()
