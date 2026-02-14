@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{9B3C3C58-90A8-4B7E-9E86-45E79A31F9A0}</ProjectGuid>
+    <RootNamespace>wvbridge</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+
+    <!-- 平台工具集：允许外部 /p:PlatformToolset=... 覆盖；默认自动探测在 Default.props 导入后完成 -->
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!--
+    PlatformToolset 最大兼容性策略：
+    - 若调用方已通过 /p:PlatformToolset=... 指定，则直接使用
+    - 否则按已安装的 toolset 自动选择：v143 -> v142 -> v141
+    - 若仍无法探测，则回退 DefaultPlatformToolset（可能仍需安装 C++ Build Tools）
+  -->
+  <PropertyGroup Label="ToolsetSelection">
+    <PlatformToolset Condition="'$(PlatformToolset)'=='' and (Exists('$(VCTargetsPath)Platforms\Win32\PlatformToolsets\v143\Toolset.props') Or Exists('$(VCTargetsPath)Platforms\x64\PlatformToolsets\v143\Toolset.props'))">v143</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)'=='' and (Exists('$(VCTargetsPath)Platforms\Win32\PlatformToolsets\v142\Toolset.props') Or Exists('$(VCTargetsPath)Platforms\x64\PlatformToolsets\v142\Toolset.props'))">v142</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)'=='' and (Exists('$(VCTargetsPath)Platforms\Win32\PlatformToolsets\v141\Toolset.props') Or Exists('$(VCTargetsPath)Platforms\x64\PlatformToolsets\v141\Toolset.props'))">v141</PlatformToolset>
+    <PlatformToolset Condition="'$(PlatformToolset)'==''">$(DefaultPlatformToolset)</PlatformToolset>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <CppStandard>stdcpp17</CppStandard>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <CppStandard>stdcpp17</CppStandard>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <!-- 输出目录与 Gradle 现有约定对齐：native/build/lib/wvbridge.dll -->
+    <OutDir>$(ProjectDir)build\</OutDir>
+    <IntDir>$(ProjectDir)build\obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetDir>$(OutDir)lib\</TargetDir>
+    <TargetName>wvbridge</TargetName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;WVBRIDGE_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(JAVA_HOME)\lib;$(JAVA_HOME)\lib\server;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>jawt.lib;jvm.lib;ole32.lib;oleaut32.lib;user32.lib;gdi32.lib;advapi32.lib;shell32.lib;shlwapi.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;WVBRIDGE_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(JAVA_HOME)\include;$(JAVA_HOME)\include\win32;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(JAVA_HOME)\lib;$(JAVA_HOME)\lib\server;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>jawt.lib;jvm.lib;ole32.lib;oleaut32.lib;user32.lib;gdi32.lib;advapi32.lib;shell32.lib;shlwapi.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClInclude Include="src\utils.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="src\libs.cpp" />
+    <ClCompile Include="src\utils.cpp" />
+  </ItemGroup>
+
+  <!-- WebView2 SDK：使用 NuGet 包 (MSBuild /restore) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

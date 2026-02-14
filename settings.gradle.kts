@@ -30,6 +30,7 @@ dependencyResolutionManagement {
 }
 include(":core")
 
+include(":platform:platform-windows")
 include(":platform:platform-linux")
 include(":platform:platform-macos")
 include(":sample:awt")
