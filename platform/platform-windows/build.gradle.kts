@@ -13,6 +13,17 @@ kotlin {
     jvmToolchain(17)
 }
 
+/**
+ * Windows 原生库支持多架构：x64 / ARM64。
+ *
+ * 仅为 host 构建服务：根据当前机器的 os.arch 自动选择 msbuild Platform，不支持覆盖。
+ */
+val msbuildPlatform: String = when (System.getProperty("os.arch").lowercase()) {
+    "amd64", "x86_64" -> "x64"
+    "aarch64", "arm64" -> "ARM64"
+    else -> error("Unsupported Windows arch for native build: ${System.getProperty("os.arch")}")
+}
+
 val processBuild = tasks.register<Exec>("processBuild") {
     onlyIf {
         System.getProperty("os.name").startsWith("Win")
@@ -22,21 +33,26 @@ val processBuild = tasks.register<Exec>("processBuild") {
     // 为 vcxproj 提供 JNI include/lib 查找路径
     environment("JAVA_HOME", Jvm.current().javaHome.absolutePath)
 
-    // 使用 msbuild 构建（NuGet 还原 + 编译），输出到 native/build/lib/wvbridge.dll
-    // PowerShell：
-    // 1) 自动通过 vswhere 定位 MSBuild.exe（若可用）
-    // 2) 执行 /t:Restore;Build 以还原 NuGet(WebView2) 并构建
-    // 3) 生成单行 SHA256（与其它平台 hash 文件一致语义）
     commandLine(
         "powershell",
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        """
-            msbuild 'wvbridge.sln' '/p:Configuration=Release' '/p:Platform=x64' '/m'
-            ${'$'}hash = (Get-FileHash 'build\\wvbridge.dll' -Algorithm SHA256).Hash.ToLower()
-            Set-Content -Path 'build\\build-windows.hash' -Value ${'$'}hash -Encoding ascii -NoNewline
+        $$"""
+            $platform = "$$msbuildPlatform"
+            Write-Host "[wvbridge] msbuild platform = $platform"
+
+            msbuild 'wvbridge.sln' '/restore' "/p:Configuration=Release" "/p:Platform=$platform" '/m'
+
+            # Windows 下仅输出到 build\\wvbridge.dll
+            $dll1 = 'build\\wvbridge.dll'
+            if (!(Test-Path $dll1)) {
+                throw "wvbridge.dll not found at $dll1"
+            }
+
+            $hash = (Get-FileHash $dll1 -Algorithm SHA256).Hash.ToLower()
+            Set-Content -Path 'build\\build-windows.hash' -Value $hash -Encoding ascii -NoNewline
         """.trimIndent()
     )
 }
