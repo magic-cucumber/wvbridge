@@ -40,10 +40,9 @@ val processBuild = tasks.register<Exec>("processBuild") {
         "Bypass",
         "-Command",
         $$"""
-            $platform = "$$msbuildPlatform"
             Write-Host "[wvbridge] msbuild platform = $platform"
 
-            msbuild 'wvbridge.sln' '/restore' "/p:Configuration=Release" "/p:Platform=$platform" '/m'
+            msbuild 'wvbridge.sln' '/restore' "/p:Configuration=Release" "/p:Platform=$$msbuildPlatform" '/m'
 
             # Windows 下仅输出到 build\\wvbridge.dll
             $dll1 = 'build\\wvbridge.dll'

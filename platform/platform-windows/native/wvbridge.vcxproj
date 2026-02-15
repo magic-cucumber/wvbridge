@@ -166,6 +166,7 @@
   <ItemGroup>
     <ClCompile Include="src\libs.cpp" />
     <ClCompile Include="src\utils.cpp" />
+    <ClCompile Include="src\thread.cpp" />
   </ItemGroup>
 
   <!-- WebView2 SDK：使用 NuGet 包 (MSBuild /restore) -->
