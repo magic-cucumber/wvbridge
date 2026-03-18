@@ -370,6 +370,12 @@ API_EXPORT(void, close0, jlong handle) {
     (void) handle;
 }
 
+API_EXPORT(void, requestFocus0, jlong handle) {
+    (void) env;
+    (void) thiz;
+    (void) handle;
+}
+
 API_EXPORT(void, loadUrl, jlong handle, jstring url) {
     (void) env;
     (void) thiz;

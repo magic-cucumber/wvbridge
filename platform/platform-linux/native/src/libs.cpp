@@ -38,6 +38,9 @@ struct WebViewContext {
 
     // 关闭流程开始后置 true；用于拒绝后续 update 排队，避免 close0 后异步访问已销毁对象。
     std::atomic_bool closing{false};
+
+    gulong window_button_press_handler_id = 0;
+    gulong webview_button_press_handler_id = 0;
 };
 
 namespace {
@@ -103,6 +106,15 @@ namespace {
     void destroy_ctx_on_gtk_thread(WebViewContext *ctx) {
         if (!ctx) return;
 
+        if (ctx->window && ctx->window_button_press_handler_id != 0) {
+            g_signal_handler_disconnect(ctx->window, ctx->window_button_press_handler_id);
+            ctx->window_button_press_handler_id = 0;
+        }
+        if (ctx->webview && ctx->webview_button_press_handler_id != 0) {
+            g_signal_handler_disconnect(ctx->webview, ctx->webview_button_press_handler_id);
+            ctx->webview_button_press_handler_id = 0;
+        }
+
         if (ctx->webview && ctx->nav) {
             // best-effort：尽早断开信号，避免销毁过程中触发回调。
             wvbridge::navigation_uninstall(ctx->webview, ctx->nav);
@@ -121,6 +133,45 @@ namespace {
         ctx->child_xid = 0;
         ctx->xdisplay = nullptr;
         ctx->parent_xid = 0;
+    }
+
+    void focus_embedded_webview(WebViewContext *ctx) {
+        if (!ctx || ctx->closing.load(std::memory_order_acquire)) return;
+
+        if (ctx->window && GTK_IS_WINDOW(ctx->window)) {
+            gtk_window_set_accept_focus(GTK_WINDOW(ctx->window), TRUE);
+            gtk_window_set_focus(GTK_WINDOW(ctx->window),
+                                 ctx->webview ? GTK_WIDGET(ctx->webview) : GTK_WIDGET(ctx->window));
+        }
+
+        if (ctx->webview) {
+            gtk_widget_grab_focus(GTK_WIDGET(ctx->webview));
+        } else if (ctx->window) {
+            gtk_widget_grab_focus(GTK_WIDGET(ctx->window));
+        }
+
+        if (ctx->window) {
+            GdkWindow *gdk_window = gtk_widget_get_window(ctx->window);
+            if (gdk_window) {
+                gdk_window_focus(gdk_window, GDK_CURRENT_TIME);
+            }
+        }
+
+        if (ctx->xdisplay && ctx->child_xid != 0) {
+            x11_ignore_errors([&] {
+                XSetInputFocus(ctx->xdisplay, ctx->child_xid, RevertToParent, CurrentTime);
+                XFlush(ctx->xdisplay);
+            });
+        }
+    }
+
+    gboolean focus_on_button_press_cb(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+        (void) widget;
+        (void) event;
+
+        auto *ctx = static_cast<WebViewContext *>(user_data);
+        focus_embedded_webview(ctx);
+        return FALSE;
     }
 
 } // namespace
@@ -236,13 +287,31 @@ API_EXPORT(jlong, initAndAttach) {
         ctx->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_decorated(GTK_WINDOW(ctx->window), FALSE);
         gtk_window_set_resizable(GTK_WINDOW(ctx->window), TRUE);
+        gtk_window_set_accept_focus(GTK_WINDOW(ctx->window), TRUE);
         gtk_window_set_default_size(GTK_WINDOW(ctx->window), (int) pw, (int) ph);
+        gtk_widget_set_can_focus(GTK_WIDGET(ctx->window), TRUE);
+        gtk_widget_add_events(GTK_WIDGET(ctx->window), GDK_BUTTON_PRESS_MASK);
 
         ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
+        gtk_widget_set_can_focus(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_hexpand(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_vexpand(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_halign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_set_valign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
+        gtk_widget_add_events(GTK_WIDGET(ctx->webview), GDK_BUTTON_PRESS_MASK);
+
+        ctx->window_button_press_handler_id = g_signal_connect(
+            ctx->window,
+            "button-press-event",
+            G_CALLBACK(focus_on_button_press_cb),
+            ctx
+        );
+        ctx->webview_button_press_handler_id = g_signal_connect(
+            ctx->webview,
+            "button-press-event",
+            G_CALLBACK(focus_on_button_press_cb),
+            ctx
+        );
 
         // 安装导航拦截信号（decide-policy）。此处先安装信号，handler 可稍后由 setNavigationHandler() 设置。
         wvbridge::navigation_install(ctx->webview, ctx->nav, &ctx->closing);
@@ -382,6 +451,22 @@ API_EXPORT(void, close0, jlong handle) {
     ctx->progress = nullptr;
 
     delete ctx;
+}
+
+API_EXPORT(void, requestFocus0, jlong handle) {
+    (void) thiz;
+
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+
+    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
+    if (!ctx) return;
+
+    wvbridge::gtk_run_on_thread_sync([&] {
+        focus_embedded_webview(ctx);
+    });
 }
 
 API_EXPORT(void, loadUrl, jlong handle, jstring url) {

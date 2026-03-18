@@ -8,6 +8,8 @@ import java.awt.event.ComponentEvent
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import java.awt.event.HierarchyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
@@ -27,9 +29,24 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
 
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
+            isFocusable = true
             Runtime.getRuntime().addShutdownHook(Thread {
                 if (handle != 0L) {
                     close0(handle)
+                }
+            })
+            addFocusListener(object : FocusAdapter() {
+                override fun focusGained(e: FocusEvent) {
+                    if (handle != 0L) {
+                        requestFocus0(handle)
+                    }
+                }
+            })
+            addMouseListener(object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent) {
+                    if (handle != 0L) {
+                        requestFocus0(handle)
+                    }
                 }
             })
         }
@@ -77,6 +94,9 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
             }
             SwingUtilities.invokeLater {
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
+                if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
+                    requestFocus0(handle)
+                }
                 revalidate()
                 repaint()
             }
@@ -115,6 +135,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private external fun setNavigationHandler(webview: Long, handler: Function<String, Boolean>)
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
     private external fun close0(webview: Long)
+    private external fun requestFocus0(webview: Long)
 
 
     private external fun loadUrl(webview: Long, url: String)
@@ -149,4 +170,3 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         }
     }
 }
-

@@ -243,6 +243,12 @@ API_EXPORT(void, close0, jlong handle) {
 
 }
 
+API_EXPORT(void, requestFocus0, jlong handle) {
+    (void) env;
+    (void) thiz;
+    (void) handle;
+}
+
 API_EXPORT(void, loadUrl, jlong handle, jstring url) {
     const char *nativeString = env->GetStringUTFChars(url, nullptr);
     if (nativeString == nullptr) {
