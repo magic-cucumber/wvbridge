@@ -39,7 +39,8 @@ find_package(PkgConfig REQUIRED)
 
 find_package(X11 REQUIRED)
 
-pkg_check_modules(WEBKIT REQUIRED webkitgtk-6.0)
+pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
 
 set(SOURCES
         src/libs.cpp
@@ -59,6 +60,7 @@ add_library(wvbridge SHARED ${SOURCES})
 # 包含目录
 target_include_directories(wvbridge PRIVATE
         ${JNI_INCLUDE_DIRS}
+        ${GTK3_INCLUDE_DIRS}
         ${X11_INCLUDE_DIR}
         ${WEBKIT_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -66,8 +68,9 @@ target_include_directories(wvbridge PRIVATE
 
 target_link_libraries(wvbridge PRIVATE
         ${JAWT_LIB}           # Java AWT
+        ${GTK3_LIBRARIES}     # GTK3
         ${X11_LIBRARIES}      # X11
-        ${WEBKIT_LIBRARIES}   # WebKitGTK 6.0 & GTK
+        ${WEBKIT_LIBRARIES}   # WebKitGTK 4.1
 )
 
 set_target_properties(wvbridge PROPERTIES

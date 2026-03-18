@@ -8,9 +8,9 @@
 #include <atomic>
 
 #include <gtk/gtk.h>
-#include <webkit/webkit.h>
+#include <webkit2/webkit2.h>
 
-#include <gdk/x11/gdkx.h>
+#include <gdk/gdkx.h>
 
 #include "gtk.h"
 #include "navigation.h"
@@ -50,7 +50,7 @@ namespace {
         GdkDisplay *gdpy = gdk_display_get_default();
         if (!gdpy) return nullptr;
 
-        // WebKitGTK 6.0 + JAWT_X11DrawingSurfaceInfo -> 仅支持 X11 嵌入
+        // WebKitGTK 4.1 + JAWT_X11DrawingSurfaceInfo -> 仅支持 X11 嵌入
         if (!GDK_IS_X11_DISPLAY(gdpy)) return nullptr;
 
         return gdk_x11_display_get_xdisplay(gdpy);
@@ -59,10 +59,10 @@ namespace {
     ::Window get_xid_from_gtk_window(GtkWidget *w) {
         if (!w) return 0;
 
-        auto *surface = gtk_native_get_surface(GTK_NATIVE(w));
-        if (!surface) return 0;
+        GdkWindow *gdk_window = gtk_widget_get_window(w);
+        if (!gdk_window || !GDK_IS_X11_WINDOW(gdk_window)) return 0;
 
-        return (::Window) gdk_x11_surface_get_xid(surface);
+        return (::Window) gdk_x11_window_get_xid(gdk_window);
     }
 
     // 在 X11 下吞掉由窗口已被外部销毁/重父子关系导致的 BadWindow 等错误，避免 GDK 打 warning。
@@ -111,9 +111,9 @@ namespace {
             wvbridge::progress_uninstall(ctx->webview, ctx->progress);
         }
 
-        // GtkWindow 关闭后，会连带销毁子树（WebView）。
+        // GtkWindow 销毁后，会连带销毁子树（WebView）。
         if (ctx->window) {
-            gtk_window_destroy(GTK_WINDOW(ctx->window));
+            gtk_widget_destroy(ctx->window);
             ctx->window = nullptr;
             ctx->webview = nullptr;
         }
@@ -233,7 +233,7 @@ API_EXPORT(jlong, initAndAttach) {
             }
         }
 
-        ctx->window = gtk_window_new();
+        ctx->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_decorated(GTK_WINDOW(ctx->window), FALSE);
         gtk_window_set_resizable(GTK_WINDOW(ctx->window), TRUE);
         gtk_window_set_default_size(GTK_WINDOW(ctx->window), (int) pw, (int) ph);
@@ -253,9 +253,8 @@ API_EXPORT(jlong, initAndAttach) {
         // size_request 使用“逻辑像素”，在 HiDPI(scale factor>1) 下会导致实际渲染尺寸被放大，
         // 从而出现 WebView 比 AWT 宿主窗口更大、被裁剪且无法滚动的问题。
 
-        gtk_window_set_child(GTK_WINDOW(ctx->window), GTK_WIDGET(ctx->webview));
-        // present 触发 map/realize，确保有 GdkSurface
-        gtk_window_present(GTK_WINDOW(ctx->window));
+        gtk_container_add(GTK_CONTAINER(ctx->window), GTK_WIDGET(ctx->webview));
+        gtk_widget_realize(ctx->window);
 
         ctx->child_xid = get_xid_from_gtk_window(ctx->window);
         if (ctx->child_xid == 0) {
@@ -270,6 +269,7 @@ API_EXPORT(jlong, initAndAttach) {
 
             XReparentWindow(ctx->xdisplay, ctx->child_xid, ctx->parent_xid, 0, 0);
             XMoveResizeWindow(ctx->xdisplay, ctx->child_xid, 0, 0, pw, ph);
+            gtk_widget_show_all(ctx->window);
             XMapRaised(ctx->xdisplay, ctx->child_xid);
             XFlush(ctx->xdisplay);
         });

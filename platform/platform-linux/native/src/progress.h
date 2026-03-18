@@ -4,7 +4,7 @@
 
 #include <atomic>
 
-#include <webkit/webkit.h>
+#include <webkit2/webkit2.h>
 
 namespace wvbridge {
 

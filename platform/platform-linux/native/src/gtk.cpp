@@ -47,7 +47,7 @@ namespace wvbridge {
             g_gtk_thread_id = std::this_thread::get_id();
 
             // GTK 初始化 + 默认主循环
-            ::gtk_init();
+            ::gtk_init(nullptr, nullptr);
 
             g_loop = g_main_loop_new(nullptr, FALSE);
 
