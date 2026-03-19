@@ -116,8 +116,6 @@ static gboolean decide_policy_cb(WebKitWebView* webview,
                                 WebKitPolicyDecision* decision,
                                 WebKitPolicyDecisionType type,
                                 gpointer user_data) {
-    (void)webview;
-
     auto* st = static_cast<NavigationState*>(user_data);
     if (!st) return G_SOURCE_CONTINUE;
 
@@ -126,22 +124,45 @@ static gboolean decide_policy_cb(WebKitWebView* webview,
         return TRUE;
     }
 
-    // 仅拦截导航（点击链接、location 变更等）
-    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
+    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
+        auto* nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
+        WebKitNavigationAction* action = webkit_navigation_policy_decision_get_navigation_action(nav_decision);
+        if (!action) {
+            webkit_policy_decision_ignore(decision);
+            return TRUE;
+        }
+
+        WebKitURIRequest* req = webkit_navigation_action_get_request(action);
+        if (!req) {
+            webkit_policy_decision_ignore(decision);
+            return TRUE;
+        }
+
+        // 与 macOS 侧一致：用户点击链接触发的新窗口请求，强制在当前 WebView 内跳转。
+        // 这样后续主 frame 响应仍会走 RESPONSE 分支，并由 JVM handler 决定是否放行。
+        if ((action) == WEBKIT_NAVIGATION_TYPE_LINK_CLICKED) {
+            webkit_web_view_load_request(webview, req);
+        }
+
+        // 不创建额外窗口，也不把这类请求直接透传给上层 handler。
+        webkit_policy_decision_ignore(decision);
+        return TRUE;
+    }
+
+    // Linux/WebKitGTK 的 NAVIGATION_ACTION 会把子 frame 导航也混进来，
+    // 这与 macOS 侧实际暴露给上层的语义不一致。这里改为只处理
+    // “主 frame 的主资源响应”，这样仍然能在开始加载前做 use/ignore，
+    // 同时不会把 iframe/srcdoc 等内部导航透传给 JVM handler。
+    if (type != WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
         return FALSE;
     }
 
-    auto* nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
-
-    // 可按需仅拦截主 frame
-    // if (!webkit_navigation_policy_decision_is_main_frame(nav_decision)) return FALSE;
-
-    WebKitNavigationAction* action = webkit_navigation_policy_decision_get_navigation_action(nav_decision);
-    if (!action) {
+    auto* response_decision = WEBKIT_RESPONSE_POLICY_DECISION(decision);
+    if (!webkit_response_policy_decision_is_main_frame_main_resource(response_decision)) {
         return FALSE;
     }
 
-    WebKitURIRequest* req = webkit_navigation_action_get_request(action);
+    WebKitURIRequest* req = webkit_response_policy_decision_get_request(response_decision);
     if (!req) {
         return FALSE;
     }
