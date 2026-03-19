@@ -140,7 +140,7 @@ static gboolean decide_policy_cb(WebKitWebView* webview,
 
         // 与 macOS 侧一致：用户点击链接触发的新窗口请求，强制在当前 WebView 内跳转。
         // 这样后续主 frame 响应仍会走 RESPONSE 分支，并由 JVM handler 决定是否放行。
-        if ((action) == WEBKIT_NAVIGATION_TYPE_LINK_CLICKED) {
+        if (webkit_navigation_action_get_navigation_type(action) == WEBKIT_NAVIGATION_TYPE_LINK_CLICKED) {
             webkit_web_view_load_request(webview, req);
         }
 
