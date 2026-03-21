@@ -14,6 +14,7 @@
 
 #include "gtk.h"
 #include "url_listener.h"
+#include "navigation.h"
 #include "progress.h"
 #include "utils.h"
 
@@ -32,6 +33,9 @@ struct WebViewContext {
 
     // URL 变化监听（JNI listener + WebKit notify::uri 信号）
     wvbridge::URLListenerState* url_listener = nullptr;
+
+    // 导航策略拦截（WebKit decide-policy 信号）
+    wvbridge::NavigationState* navigation = nullptr;
 
     // 进度监听（JNI listener + estimated-load-progress）
     wvbridge::ProgressState* progress = nullptr;
@@ -118,6 +122,9 @@ namespace {
         if (ctx->webview && ctx->url_listener) {
             // best-effort：尽早断开信号，避免销毁过程中触发回调。
             wvbridge::url_listener_uninstall(ctx->webview, ctx->url_listener);
+        }
+        if (ctx->webview && ctx->navigation) {
+            wvbridge::navigation_uninstall(ctx->webview, ctx->navigation);
         }
         if (ctx->webview && ctx->progress) {
             wvbridge::progress_uninstall(ctx->webview, ctx->progress);
@@ -260,6 +267,7 @@ API_EXPORT(jlong, initAndAttach) {
     auto *ctx = new WebViewContext();
     ctx->parent_xid = parent_xid;
     ctx->url_listener = wvbridge::url_listener_state_new(env);
+    ctx->navigation = wvbridge::navigation_state_new();
     ctx->progress = wvbridge::progress_state_new(env);
 
     bool ok = true;
@@ -316,6 +324,9 @@ API_EXPORT(jlong, initAndAttach) {
         // 安装 URL 变化监听信号（notify::uri）。listener 可稍后由 setURLChangeListener() 设置。
         wvbridge::url_listener_install(ctx->webview, ctx->url_listener, &ctx->closing);
 
+        // 安装导航策略拦截（decide-policy）。将新窗口请求重定向到当前 WebView。
+        wvbridge::navigation_install(ctx->webview, ctx->navigation, &ctx->closing);
+
         // 安装进度信号（notify::estimated-load-progress）。listener 可稍后由 setProgressListener() 设置。
         wvbridge::progress_install(ctx->webview, ctx->progress, &ctx->closing);
         // 注意：不要用 gtk_widget_set_size_request() 强行指定 WebView 尺寸。
@@ -348,6 +359,8 @@ API_EXPORT(jlong, initAndAttach) {
         wvbridge::gtk_run_on_thread_sync([&] { destroy_ctx_on_gtk_thread(ctx); });
         wvbridge::url_listener_state_destroy(ctx->url_listener);
         ctx->url_listener = nullptr;
+        wvbridge::navigation_state_destroy(ctx->navigation);
+        ctx->navigation = nullptr;
         wvbridge::progress_state_destroy(ctx->progress);
         ctx->progress = nullptr;
         delete ctx;
@@ -446,6 +459,9 @@ API_EXPORT(void, close0, jlong handle) {
 
     wvbridge::url_listener_state_destroy(ctx->url_listener);
     ctx->url_listener = nullptr;
+
+    wvbridge::navigation_state_destroy(ctx->navigation);
+    ctx->navigation = nullptr;
 
     wvbridge::progress_state_destroy(ctx->progress);
     ctx->progress = nullptr;

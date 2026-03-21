@@ -50,6 +50,8 @@ set(SOURCES
         src/gtk.cpp
         src/url_listener.h
         src/url_listener.cpp
+        src/navigation.h
+        src/navigation.cpp
         src/progress.h
         src/progress.cpp
 )
