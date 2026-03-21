@@ -1,6 +1,5 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
-import top.kagg886.wvbridge.NavigationHandler
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.awt.*
 import java.awt.event.ComponentAdapter
@@ -39,9 +38,8 @@ private class BrowserPane(
         border = BorderFactory.createTitledBorder(title)
 
         webView.addProgressListener(::println)
-        webView.addNavigationHandler {
+        webView.addURLChangeListener {
             println("[$title] $it")
-            NavigationHandler.NavigationResult.ALLOWED
         }
         webView.addProgressListener { progress ->
             SwingUtilities.invokeLater {
@@ -50,14 +48,10 @@ private class BrowserPane(
                 progressBar.isVisible = p > 0f && p < 1f
             }
         }
-        webView.addNavigationHandler {
-            if (it.startsWith("https://wenku.baidu.com")) {
-                return@addNavigationHandler NavigationHandler.NavigationResult.DENIED
-            }
+        webView.addURLChangeListener {
             SwingUtilities.invokeLater {
                 urlField.text = it
             }
-            NavigationHandler.NavigationResult.ALLOWED
         }
 
         urlField.addActionListener {

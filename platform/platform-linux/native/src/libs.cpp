@@ -13,7 +13,7 @@
 #include <gdk/gdkx.h>
 
 #include "gtk.h"
-#include "navigation.h"
+#include "url_listener.h"
 #include "progress.h"
 #include "utils.h"
 
@@ -30,8 +30,8 @@ struct WebViewContext {
     GtkWidget *window = nullptr;
     WebKitWebView *webview = nullptr;
 
-    // 导航拦截（JNI handler + WebKit decide-policy 信号）
-    wvbridge::NavigationState* nav = nullptr;
+    // URL 变化监听（JNI listener + WebKit notify::uri 信号）
+    wvbridge::URLListenerState* url_listener = nullptr;
 
     // 进度监听（JNI listener + estimated-load-progress）
     wvbridge::ProgressState* progress = nullptr;
@@ -115,9 +115,9 @@ namespace {
             ctx->webview_button_press_handler_id = 0;
         }
 
-        if (ctx->webview && ctx->nav) {
+        if (ctx->webview && ctx->url_listener) {
             // best-effort：尽早断开信号，避免销毁过程中触发回调。
-            wvbridge::navigation_uninstall(ctx->webview, ctx->nav);
+            wvbridge::url_listener_uninstall(ctx->webview, ctx->url_listener);
         }
         if (ctx->webview && ctx->progress) {
             wvbridge::progress_uninstall(ctx->webview, ctx->progress);
@@ -259,7 +259,7 @@ API_EXPORT(jlong, initAndAttach) {
     // 2) 在 GTK 线程同步创建 WebView，并 reparent 到 AWT 宿主窗口
     auto *ctx = new WebViewContext();
     ctx->parent_xid = parent_xid;
-    ctx->nav = wvbridge::navigation_state_new(env);
+    ctx->url_listener = wvbridge::url_listener_state_new(env);
     ctx->progress = wvbridge::progress_state_new(env);
 
     bool ok = true;
@@ -313,9 +313,8 @@ API_EXPORT(jlong, initAndAttach) {
             ctx
         );
 
-        // 安装导航拦截信号（decide-policy）。Linux 侧只把 URL 交给 handler，
-        // 触发时机与 Android shouldOverrideUrlLoading 类似，handler 可稍后设置。
-        wvbridge::navigation_install(ctx->webview, ctx->nav, &ctx->closing);
+        // 安装 URL 变化监听信号（notify::uri）。listener 可稍后由 setURLChangeListener() 设置。
+        wvbridge::url_listener_install(ctx->webview, ctx->url_listener, &ctx->closing);
 
         // 安装进度信号（notify::estimated-load-progress）。listener 可稍后由 setProgressListener() 设置。
         wvbridge::progress_install(ctx->webview, ctx->progress, &ctx->closing);
@@ -347,8 +346,8 @@ API_EXPORT(jlong, initAndAttach) {
 
     if (!ok) {
         wvbridge::gtk_run_on_thread_sync([&] { destroy_ctx_on_gtk_thread(ctx); });
-        wvbridge::navigation_state_destroy(ctx->nav);
-        ctx->nav = nullptr;
+        wvbridge::url_listener_state_destroy(ctx->url_listener);
+        ctx->url_listener = nullptr;
         wvbridge::progress_state_destroy(ctx->progress);
         ctx->progress = nullptr;
         delete ctx;
@@ -445,8 +444,8 @@ API_EXPORT(void, close0, jlong handle) {
         }
     });
 
-    wvbridge::navigation_state_destroy(ctx->nav);
-    ctx->nav = nullptr;
+    wvbridge::url_listener_state_destroy(ctx->url_listener);
+    ctx->url_listener = nullptr;
 
     wvbridge::progress_state_destroy(ctx->progress);
     ctx->progress = nullptr;
@@ -528,8 +527,8 @@ API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
     wvbridge::progress_set_listener(env, ctx->progress, listener);
 }
 
-//private external fun setNavigationHandler(webview: Long, handler: Function<String, Boolean>)
-API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
+//private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
+API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
@@ -537,10 +536,10 @@ API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
     auto *ctx = (WebViewContext *) handle;
     if (!ctx) return;
 
-    // handler 允许为 null：表示不拦截（默认放行）。
-    if (!ctx->nav) {
-        ctx->nav = wvbridge::navigation_state_new(env);
+    // handler 允许为 null：表示不监听。
+    if (!ctx->url_listener) {
+        ctx->url_listener = wvbridge::url_listener_state_new(env);
     }
 
-    wvbridge::navigation_set_handler(env, ctx->nav, handler);
+    wvbridge::url_listener_set_listener(env, ctx->url_listener, handler);
 }

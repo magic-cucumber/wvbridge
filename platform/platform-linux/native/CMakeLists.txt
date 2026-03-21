@@ -48,8 +48,8 @@ set(SOURCES
         src/utils.cpp
         src/gtk.h
         src/gtk.cpp
-        src/navigation.h
-        src/navigation.cpp
+        src/url_listener.h
+        src/url_listener.cpp
         src/progress.h
         src/progress.cpp
 )

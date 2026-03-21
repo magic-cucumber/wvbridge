@@ -1,6 +1,6 @@
 package top.kagg886.wvbridge.internal
 
-import top.kagg886.wvbridge.NavigationHandler
+import top.kagg886.wvbridge.URLChangeListener
 import java.awt.Canvas
 import java.awt.Graphics
 import java.awt.event.ComponentAdapter
@@ -13,7 +13,6 @@ import java.awt.event.MouseEvent
 import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
-import java.util.function.Function
 import javax.swing.SwingUtilities
 
 /**
@@ -25,7 +24,7 @@ import javax.swing.SwingUtilities
 internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
     private val progressListener = mutableSetOf<Consumer<Float>>()
-    private val navigationHandler = mutableMapOf<Int, MutableSet<NavigationHandler>>()
+    private val urlChangeListener = mutableSetOf<URLChangeListener>()
 
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
@@ -87,10 +86,11 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
                     it.accept(progress)
                 }
             }
-            setNavigationHandler(handle) { url ->
-                if (navigationHandler.isEmpty()) return@setNavigationHandler true
-                val list = navigationHandler.entries.sortedBy { it.key }.flatMap { it.value.toList() }
-                !list.any { it.handleNavigation(url) === NavigationHandler.NavigationResult.DENIED }
+            setURLChangeListener(handle) { url ->
+                if (urlChangeListener.isEmpty()) return@setURLChangeListener
+                urlChangeListener.forEach {
+                    it.handleURLChange(url)
+                }
             }
             SwingUtilities.invokeLater {
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
@@ -111,17 +111,12 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         progressListener.remove(consumer)
     }
 
-    fun addNavigationHandler(priority: Int = 0, handle: NavigationHandler) {
-        val queue = navigationHandler.getOrPut(priority) { mutableSetOf() }
-        queue.add(handle)
+    fun addURLChangeListener(handle: URLChangeListener) = check(urlChangeListener.add(handle)) {
+        "URL change listener: [$handle] already added"
     }
 
-    fun removeNavigationHandler(priority: Int = 0, handle: NavigationHandler) {
-        val queue = navigationHandler.getOrPut(priority) { mutableSetOf() }
-        queue.remove(handle)
-        if (queue.isEmpty()) {
-            navigationHandler.remove(priority)
-        }
+    fun removeURLChangeListener(handle: URLChangeListener) = check(urlChangeListener.remove(handle)) {
+        "URL change listener: [$handle] not yet exists"
     }
 
     fun loadUrl(url: String) = loadUrl(handle, url)
@@ -132,7 +127,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
 
     private external fun initAndAttach(): Long
     private external fun setProgressListener(webview: Long, consumer: Consumer<Float>)
-    private external fun setNavigationHandler(webview: Long, handler: Function<String, Boolean>)
+    private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
     private external fun close0(webview: Long)
     private external fun requestFocus0(webview: Long)

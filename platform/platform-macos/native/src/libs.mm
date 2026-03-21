@@ -12,7 +12,7 @@
 
 #import "utils.h"
 #import "progress.h"
-#import "navigation.h"
+#import "url_listener.h"
 #import "ui_delegate.h"
 
 struct WebViewContext {
@@ -21,7 +21,7 @@ struct WebViewContext {
     NSView *hostView = nil;
     CALayer *rootLayer = nil;
     ProgressObserver *progressObserver = nil;
-    NavigationGateway *navigationGateway = nil;
+    URLChangeObserver *urlChangeObserver = nil;
 };
 
 API_EXPORT(jlong, initAndAttach) {
@@ -219,9 +219,11 @@ API_EXPORT(void, close0, jlong handle) {
         if (!ctx) return;
 
         if (ctx->webView) {
-            ctx->webView.navigationDelegate = nil;
-            [ctx->navigationGateway release];
-            ctx->navigationGateway = nil;
+            if (ctx->urlChangeObserver != nil) {
+                [ctx->webView removeObserver:ctx->urlChangeObserver forKeyPath:@"URL"];
+                [ctx->urlChangeObserver release];
+                ctx->urlChangeObserver = nil;
+            }
 
             [ctx->webView.UIDelegate release];
             ctx->webView.UIDelegate = nil;
@@ -310,8 +312,8 @@ API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
     ctx->progressObserver = observer;
 }
 
-//private external fun setNavigationHandler(webview: Long, handler: Function<String, Boolean>)
-API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
+//private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
+API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
@@ -319,10 +321,10 @@ API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
 
-    if (ctx->navigationGateway != nil) {
-        ctx->webView.navigationDelegate = nil;
-        [ctx->navigationGateway release];
-        ctx->navigationGateway = nil;
+    if (ctx->urlChangeObserver != nil) {
+        [ctx->webView removeObserver:ctx->urlChangeObserver forKeyPath:@"URL"];
+        [ctx->urlChangeObserver release];
+        ctx->urlChangeObserver = nil;
     }
 
     if (handler == nullptr) return;
@@ -331,14 +333,33 @@ API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
     if (env->GetJavaVM(&jvm) != JNI_OK) return;
 
     jclass handlerClass = env->GetObjectClass(handler);
-    jmethodID applyMID = env->GetMethodID(handlerClass,
-                                          "apply",
-                                          "(Ljava/lang/Object;)Ljava/lang/Object;");
+    jmethodID callMID = env->GetMethodID(handlerClass,
+                                         "accept",
+                                         "(Ljava/lang/Object;)V");
+    bool useAccept = true;
+    if (callMID == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        callMID = env->GetMethodID(handlerClass,
+                                   "invoke",
+                                   "(Ljava/lang/Object;)Ljava/lang/Object;");
+        useAccept = false;
+    }
     env->DeleteLocalRef(handlerClass);
 
-    NavigationGateway *gateway = [[NavigationGateway alloc] initWithJVM:jvm
-                                                               listener:env->NewGlobalRef(handler)
-                                                               methodID:applyMID];
-    ctx->webView.navigationDelegate = gateway;
-    ctx->navigationGateway = gateway;
+    if (callMID == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+    }
+
+    URLChangeObserver *observer = [[URLChangeObserver alloc] initWithJVM:jvm
+                                                                listener:env->NewGlobalRef(handler)
+                                                                methodID:callMID
+                                                               useAccept:useAccept];
+
+    [ctx->webView addObserver:observer
+                   forKeyPath:@"URL"
+                      options:NSKeyValueObservingOptionNew
+                      context:nil];
+
+    ctx->urlChangeObserver = observer;
 }

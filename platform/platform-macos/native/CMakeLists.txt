@@ -37,7 +37,7 @@ set(SOURCES
         src/libs.mm
         src/utils.mm
         src/progress.mm
-        src/navigation.mm
+        src/url_listener.mm
         src/ui_delegate.mm
 )
 

@@ -390,7 +390,7 @@ API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
     (void) listener;
 }
 
-API_EXPORT(void, setNavigationHandler, jlong handle, jobject handler) {
+API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     (void) env;
     (void) thiz;
     (void) handle;

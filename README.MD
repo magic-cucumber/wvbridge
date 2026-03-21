@@ -24,13 +24,13 @@ wvbridge is a **Compose Multiplatform** library that embeds the **host system We
 
 Legend: ✅ Implemented · 🚧 In progress · ❌ Not implemented · ⛔ Not supported
 
-| Feature                  | macOS | Windows | Linux | iOS | Android |
-|--------------------------|-------|---------|-------|-----|---------|
-| Request interception     | ✅     | ❌       | ❌     | ❌   | ❌       |
-| Request modification     | ⛔     | ❌       | ❌     | ❌   | ❌       |
-| Progress listener        | ✅     | ❌       | ❌     | ❌   | ❌       |
-| Programmatic URL loading | ✅     | ❌       | ❌     | ❌   | ❌       |
-| JavaScript injection     | ❌     | ❌       | ❌     | ❌   | ❌       |
+| Feature                  | macOS | Windows | Linux | iOS  | Android |
+| ------------------------ | ----- | ------- | ----- | ---- | ------- |
+| URL change listener      | ✅     | ❌       | ✅     | ❌    | ❌       |
+| Request modification     | ❌     | ❌       | ❌     | ❌    | ❌       |
+| Progress listener        | ✅     | ❌       | ✅     | ❌    | ❌       |
+| Programmatic URL loading | ✅     | ❌       | ✅     | ❌    | ❌       |
+| JavaScript injection     | ❌     | ❌       | ❌     | ❌    | ❌       |
 
 ## Common Platform Design (High-level)
 
