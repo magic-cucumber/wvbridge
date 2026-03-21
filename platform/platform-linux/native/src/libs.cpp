@@ -313,7 +313,8 @@ API_EXPORT(jlong, initAndAttach) {
             ctx
         );
 
-        // 安装导航拦截信号（decide-policy）。此处先安装信号，handler 可稍后由 setNavigationHandler() 设置。
+        // 安装导航拦截信号（decide-policy）。Linux 侧只把 URL 交给 handler，
+        // 触发时机与 Android shouldOverrideUrlLoading 类似，handler 可稍后设置。
         wvbridge::navigation_install(ctx->webview, ctx->nav, &ctx->closing);
 
         // 安装进度信号（notify::estimated-load-progress）。listener 可稍后由 setProgressListener() 设置。

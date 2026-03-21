@@ -8,8 +8,9 @@
 
 namespace wvbridge {
 
-// 导航拦截状态（持有 JNI handler 的 GlobalRef + WebKit 信号连接）。
-// 仅在 C++ 层使用；Java/Kotlin 通过 JNI 的 setNavigationHandler() 传入 handler。
+// 导航拦截状态（持有 JNI handler 的 GlobalRef + WebKit decide-policy 信号连接）。
+// 仅在 C++ 层使用；Java/Kotlin 通过 JNI 的 setNavigationHandler() 传入
+// Function<String, Boolean>。Linux 侧只回调 URL 字符串，不暴露 request/response 细节。
 struct NavigationState;
 
 // 创建/销毁
@@ -26,6 +27,7 @@ void navigation_state_destroy(NavigationState* state);
 void navigation_set_handler(JNIEnv* env, NavigationState* state, jobject handler);
 
 // 安装/卸载 WebKitGTK 的 decide-policy 回调。
+// - 行为类似 Android shouldOverrideUrlLoading：在导航动作发生时把 url 交给上层决定。
 // - closing_flag 用于在 close 流程中避免再进入 JVM（closing==true 时直接拦截/忽略）。
 void navigation_install(WebKitWebView* webview, NavigationState* state, const std::atomic_bool* closing_flag);
 void navigation_uninstall(WebKitWebView* webview, NavigationState* state);

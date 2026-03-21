@@ -49,6 +49,13 @@ static bool should_block_due_to_closing(const NavigationState* st) {
     return st->closing->load(std::memory_order_acquire);
 }
 
+static const char* get_request_uri(WebKitURIRequest* req) {
+    if (!req) return "";
+
+    const char* uri = webkit_uri_request_get_uri(req);
+    return uri ? uri : "";
+}
+
 // 调用 JVM handler(url) -> boolean
 // - 若没有 handler，则返回 true（默认放行）
 // - 若 JVM 调用失败/抛异常，则返回 false（安全起见拦截），并清理异常。
@@ -138,39 +145,34 @@ static gboolean decide_policy_cb(WebKitWebView* webview,
             return TRUE;
         }
 
-        // 与 macOS 侧一致：用户点击链接触发的新窗口请求，强制在当前 WebView 内跳转。
-        // 这样后续主 frame 响应仍会走 RESPONSE 分支，并由 JVM handler 决定是否放行。
+        // 用户点击链接触发的新窗口请求，强制在当前 WebView 内跳转。
+        // 后续重定向到当前 WebView 的导航动作会重新进入 NAVIGATION_ACTION 分支，
+        // 由上层 callback(url) 决定是否放行。
         if (webkit_navigation_action_get_navigation_type(action) == WEBKIT_NAVIGATION_TYPE_LINK_CLICKED) {
             webkit_web_view_load_request(webview, req);
         }
 
-        // 不创建额外窗口，也不把这类请求直接透传给上层 handler。
+        // 不创建额外窗口，也不在这里直接把请求透传给上层，避免重复回调。
         webkit_policy_decision_ignore(decision);
         return TRUE;
     }
 
-    // Linux/WebKitGTK 的 NAVIGATION_ACTION 会把子 frame 导航也混进来，
-    // 这与 macOS 侧实际暴露给上层的语义不一致。这里改为只处理
-    // “主 frame 的主资源响应”，这样仍然能在开始加载前做 use/ignore，
-    // 同时不会把 iframe/srcdoc 等内部导航透传给 JVM handler。
-    if (type != WEBKIT_POLICY_DECISION_TYPE_RESPONSE) {
+    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
         return FALSE;
     }
 
-    auto* response_decision = WEBKIT_RESPONSE_POLICY_DECISION(decision);
-    if (!webkit_response_policy_decision_is_main_frame_main_resource(response_decision)) {
+    auto* nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
+    WebKitNavigationAction* action = webkit_navigation_policy_decision_get_navigation_action(nav_decision);
+    if (!action) {
         return FALSE;
     }
 
-    WebKitURIRequest* req = webkit_response_policy_decision_get_request(response_decision);
+    WebKitURIRequest* req = webkit_navigation_action_get_request(action);
     if (!req) {
         return FALSE;
     }
 
-    const char* uri = webkit_uri_request_get_uri(req);
-    if (!uri) uri = "";
-
-    bool allow = call_handler_allow(st, uri);
+    bool allow = call_handler_allow(st, get_request_uri(req));
     if (allow) {
         webkit_policy_decision_use(decision);
     } else {
