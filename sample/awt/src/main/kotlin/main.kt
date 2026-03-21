@@ -51,6 +51,9 @@ private class BrowserPane(
             }
         }
         webView.addNavigationHandler {
+            if (it.startsWith("https://wenku.baidu.com")) {
+                return@addNavigationHandler NavigationHandler.NavigationResult.DENIED
+            }
             SwingUtilities.invokeLater {
                 urlField.text = it
             }

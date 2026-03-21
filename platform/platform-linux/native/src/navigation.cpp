@@ -14,7 +14,7 @@ struct NavigationState {
     jobject handler_global = nullptr;
     jmethodID mid_apply = nullptr; // Object apply(Object)
 
-    gulong decide_policy_handler_id = 0;
+    gulong notify_uri_handler_id = 0;
 
     const std::atomic_bool* closing = nullptr; // borrowed
 };
@@ -49,34 +49,23 @@ static bool should_block_due_to_closing(const NavigationState* st) {
     return st->closing->load(std::memory_order_acquire);
 }
 
-static const char* get_request_uri(WebKitURIRequest* req) {
-    if (!req) return "";
-
-    const char* uri = webkit_uri_request_get_uri(req);
-    return uri ? uri : "";
-}
-
-// 调用 JVM handler(url) -> boolean
-// - 若没有 handler，则返回 true（默认放行）
-// - 若 JVM 调用失败/抛异常，则返回 false（安全起见拦截），并清理异常。
-static bool call_handler_allow(NavigationState* st, const char* uri) {
-    if (!st) return true;
-    if (!st->handler_global || !st->mid_apply || !st->jvm) return true;
+// 调用 JVM handler(url)，忽略返回值。
+static void notify_handler(NavigationState* st, const char* uri) {
+    if (!st) return;
+    if (!st->handler_global || !st->mid_apply || !st->jvm) return;
 
     bool did_attach = false;
     JNIEnv* env = get_env(st->jvm, &did_attach);
     if (!env) {
         detach_if_needed(st->jvm, did_attach);
-        return false;
+        return;
     }
 
-    // Kotlin/Java 的 String 需要 UTF-8
     jstring juri = env->NewStringUTF(uri ? uri : "");
     if (!juri) {
-        // OOM or exception
         if (env->ExceptionCheck()) env->ExceptionClear();
         detach_if_needed(st->jvm, did_attach);
-        return false;
+        return;
     }
 
     jobject ret = env->CallObjectMethod(st->handler_global, st->mid_apply, juri);
@@ -85,101 +74,22 @@ static bool call_handler_allow(NavigationState* st, const char* uri) {
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         detach_if_needed(st->jvm, did_attach);
-        return false;
+        return;
     }
 
-    bool allow = true;
-    if (ret != nullptr) {
-        jclass clsBoolean = env->FindClass("java/lang/Boolean");
-        if (clsBoolean != nullptr && env->IsInstanceOf(ret, clsBoolean)) {
-            jmethodID midBoolValue = env->GetMethodID(clsBoolean, "booleanValue", "()Z");
-            if (midBoolValue) {
-                allow = (env->CallBooleanMethod(ret, midBoolValue) == JNI_TRUE);
-            } else {
-                allow = false;
-            }
-            env->DeleteLocalRef(clsBoolean);
-        } else {
-            // 返回类型不对，当作拒绝
-            if (clsBoolean) env->DeleteLocalRef(clsBoolean);
-            allow = false;
-        }
-        env->DeleteLocalRef(ret);
-    } else {
-        // null 当作拒绝（更安全）
-        allow = false;
-    }
-
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        allow = false;
-    }
+    if (ret) env->DeleteLocalRef(ret);
 
     detach_if_needed(st->jvm, did_attach);
-    return allow;
 }
 
-static gboolean decide_policy_cb(WebKitWebView* webview,
-                                WebKitPolicyDecision* decision,
-                                WebKitPolicyDecisionType type,
-                                gpointer user_data) {
+static void notify_uri_cb(WebKitWebView* webview, GParamSpec* pspec, gpointer user_data) {
     auto* st = static_cast<NavigationState*>(user_data);
-    if (!st) return G_SOURCE_CONTINUE;
+    if (!st || !webview) return;
+    if (pspec == nullptr) return;
+    if (should_block_due_to_closing(st)) return;
 
-    if (should_block_due_to_closing(st)) {
-        webkit_policy_decision_ignore(decision);
-        return TRUE;
-    }
-
-    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
-        auto* nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
-        WebKitNavigationAction* action = webkit_navigation_policy_decision_get_navigation_action(nav_decision);
-        if (!action) {
-            webkit_policy_decision_ignore(decision);
-            return TRUE;
-        }
-
-        WebKitURIRequest* req = webkit_navigation_action_get_request(action);
-        if (!req) {
-            webkit_policy_decision_ignore(decision);
-            return TRUE;
-        }
-
-        // 用户点击链接触发的新窗口请求，强制在当前 WebView 内跳转。
-        // 后续重定向到当前 WebView 的导航动作会重新进入 NAVIGATION_ACTION 分支，
-        // 由上层 callback(url) 决定是否放行。
-        if (webkit_navigation_action_get_navigation_type(action) == WEBKIT_NAVIGATION_TYPE_LINK_CLICKED) {
-            webkit_web_view_load_request(webview, req);
-        }
-
-        // 不创建额外窗口，也不在这里直接把请求透传给上层，避免重复回调。
-        webkit_policy_decision_ignore(decision);
-        return TRUE;
-    }
-
-    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
-        return FALSE;
-    }
-
-    auto* nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
-    WebKitNavigationAction* action = webkit_navigation_policy_decision_get_navigation_action(nav_decision);
-    if (!action) {
-        return FALSE;
-    }
-
-    WebKitURIRequest* req = webkit_navigation_action_get_request(action);
-    if (!req) {
-        return FALSE;
-    }
-
-    bool allow = call_handler_allow(st, get_request_uri(req));
-    if (allow) {
-        webkit_policy_decision_use(decision);
-    } else {
-        webkit_policy_decision_ignore(decision);
-    }
-
-    return TRUE;
+    const char* uri = webkit_web_view_get_uri(webview);
+    notify_handler(st, uri ? uri : "");
 }
 
 NavigationState* navigation_state_new(JNIEnv* env) {
@@ -263,21 +173,20 @@ void navigation_install(WebKitWebView* webview, NavigationState* state, const st
 
     state->closing = closing_flag;
 
-    if (state->decide_policy_handler_id != 0) {
-        // 已安装：先卸载避免重复连接
-        g_signal_handler_disconnect(webview, state->decide_policy_handler_id);
-        state->decide_policy_handler_id = 0;
+    if (state->notify_uri_handler_id != 0) {
+        g_signal_handler_disconnect(webview, state->notify_uri_handler_id);
+        state->notify_uri_handler_id = 0;
     }
 
-    state->decide_policy_handler_id = g_signal_connect(webview, "decide-policy", G_CALLBACK(decide_policy_cb), state);
+    state->notify_uri_handler_id = g_signal_connect(webview, "notify::uri", G_CALLBACK(notify_uri_cb), state);
 }
 
 void navigation_uninstall(WebKitWebView* webview, NavigationState* state) {
     if (!webview || !state) return;
 
-    if (state->decide_policy_handler_id != 0) {
-        g_signal_handler_disconnect(webview, state->decide_policy_handler_id);
-        state->decide_policy_handler_id = 0;
+    if (state->notify_uri_handler_id != 0) {
+        g_signal_handler_disconnect(webview, state->notify_uri_handler_id);
+        state->notify_uri_handler_id = 0;
     }
 }
 
