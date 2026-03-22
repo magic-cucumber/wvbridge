@@ -56,7 +56,7 @@ API_EXPORT(jlong, initAndAttach) {
     WebViewContext *ctx = new WebViewContext();
 
     runOnMainSync(^{
-        ctx->rootLayer = [CALayer layer];
+        ctx->rootLayer = [[CALayer alloc] init];
 
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
         config.defaultWebpagePreferences.allowsContentJavaScript = YES;
@@ -205,7 +205,8 @@ API_EXPORT(void, close0, jlong handle) {
 
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        surfaceLayers.layer = nil;
+        [ctx->rootLayer release];
+        ctx->rootLayer = nil;
         [CATransaction commit];
         [CATransaction flush];
 
