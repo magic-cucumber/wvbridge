@@ -26,11 +26,14 @@ Legend: ✅ Implemented · 🚧 In progress · ❌ Not implemented · ⛔ Not su
 
 | Feature                  | macOS | Windows | Linux | iOS  | Android |
 | ------------------------ | ----- | ------- | ----- | ---- | ------- |
-| URL change listener      | ✅     | ❌       | ✅     | ❌    | ❌       |
+| URL change listener      | ✅     | ✅       | ✅     | ❌    | ❌       |
 | Request modification     | ❌     | ❌       | ❌     | ❌    | ❌       |
-| Progress listener        | ✅     | ❌       | ✅     | ❌    | ❌       |
-| Programmatic URL loading | ✅     | ❌       | ✅     | ❌    | ❌       |
+| Progress listener        | ✅     | ✅       | ✅     | ❌    | ❌       |
+| Programmatic URL loading | ✅     | ✅       | ✅     | ❌    | ❌       |
+| Basic navigation support | ✅     | ✅       | ✅     | ❌    | ❌       |
 | JavaScript injection     | ❌     | ❌       | ❌     | ❌    | ❌       |
+
+> Basic navigation support means: one-step forward, one-step back, query can-go-forward, query can-go-back.
 
 ## Common Platform Design (High-level)
 

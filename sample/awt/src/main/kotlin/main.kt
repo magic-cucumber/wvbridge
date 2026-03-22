@@ -27,6 +27,9 @@ private class BrowserPane(
     private val urlField = JTextField(initializeUrl).apply {
         preferredSize = Dimension(600, 30)
     }
+    private val backButton = JButton("←")
+    private val forwardButton = JButton("→")
+    private val refreshButton = JButton("⟳")
 
     private val webView = WebViewBridgePanel {
         loadUrl(initializeUrl)
@@ -51,6 +54,7 @@ private class BrowserPane(
         webView.addURLChangeListener {
             SwingUtilities.invokeLater {
                 urlField.text = it
+                updateNavButtons()
             }
         }
 
@@ -58,7 +62,34 @@ private class BrowserPane(
             progressBar.value = 0
             progressBar.isVisible = false
             webView.loadUrl(urlField.text)
+            updateNavButtons()
         }
+        backButton.addActionListener {
+            runNavigation {
+                webView.goBack()
+            }
+        }
+        forwardButton.addActionListener {
+            runNavigation {
+                webView.goForward()
+            }
+        }
+        refreshButton.addActionListener {
+            runRefresh()
+        }
+
+        val navPanel = JPanel(BorderLayout(8, 0)).apply {
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                    add(backButton)
+                    add(forwardButton)
+                    add(refreshButton)
+                },
+                BorderLayout.WEST
+            )
+            add(urlField, BorderLayout.CENTER)
+        }
+        updateNavButtons()
 
         add(
             progressBar,
@@ -71,7 +102,7 @@ private class BrowserPane(
             }
         )
         add(
-            urlField,
+            navPanel,
             GridBagConstraints().apply {
                 gridx = 0
                 gridy = 1
@@ -108,40 +139,45 @@ private class BrowserPane(
             }
         )
     }
+
+    private fun updateNavButtons() {
+        backButton.isEnabled = runCatching { webView.canGoBack() }.getOrDefault(false)
+        forwardButton.isEnabled = runCatching { webView.canGoForward() }.getOrDefault(false)
+    }
+
+    private fun runNavigation(action: () -> Boolean) {
+        val result = runCatching { action() }
+        result.exceptionOrNull()?.let {
+            JOptionPane.showMessageDialog(this, it.cause?.message ?: it.message ?: "Navigation failed")
+            updateNavButtons()
+            return
+        }
+        updateNavButtons()
+    }
+
+    private fun runRefresh() {
+        val result = runCatching { webView.refresh() }
+        result.exceptionOrNull()?.let {
+            JOptionPane.showMessageDialog(this, it.cause?.message ?: it.message ?: "Refresh failed")
+            updateNavButtons()
+            return
+        }
+        updateNavButtons()
+    }
 }
 
 fun main() = SwingUtilities.invokeLater {
     val frame = JFrame("WebView Bridge Panel Demo")
     frame.setSize(1200, 600)
     frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-    frame.layout = GridBagLayout()
+    frame.layout = GridLayout(1, 2, 0, 0)
 
     val initializeUrl = "https://www.baidu.com"
     val leftPane = BrowserPane("左侧 WebView", initializeUrl)
     val rightPane = BrowserPane("右侧 WebView", initializeUrl)
 
-    frame.add(
-        leftPane,
-        GridBagConstraints().apply {
-            gridx = 0
-            gridy = 0
-            weightx = 0.5
-            weighty = 1.0
-            fill = GridBagConstraints.BOTH
-            insets = Insets(10, 10, 10, 5)
-        }
-    )
-    frame.add(
-        rightPane,
-        GridBagConstraints().apply {
-            gridx = 1
-            gridy = 0
-            weightx = 0.5
-            weighty = 1.0
-            fill = GridBagConstraints.BOTH
-            insets = Insets(10, 5, 10, 10)
-        }
-    )
+    frame.add(leftPane)
+    frame.add(rightPane)
 
     val menuBar = JMenuBar()
     val menu = JMenu("操作")

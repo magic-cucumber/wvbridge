@@ -1,19 +1,13 @@
 package top.kagg886.wvbridge.internal
 
-import top.kagg886.wvbridge.URLChangeListener
 import java.awt.Canvas
 import java.awt.Graphics
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
-import java.awt.event.FocusAdapter
-import java.awt.event.FocusEvent
-import java.awt.event.HierarchyEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
+import java.awt.event.*
 import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 
 /**
  * ================================================
@@ -23,8 +17,6 @@ import javax.swing.SwingUtilities
  */
 internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
-    private val progressListener = mutableSetOf<Consumer<Float>>()
-    private val urlChangeListener = mutableSetOf<URLChangeListener>()
 
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
@@ -75,6 +67,27 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         g.drawRect(0, 0, width - 1, height - 1)
     }
 
+    private val progressListener = mutableSetOf<Consumer<Float>>()
+
+    fun addProgressListener(consumer: Consumer<Float>): Unit {
+        progressListener.add(consumer)
+    }
+
+    fun removeProgressListener(consumer: Consumer<Float>) {
+        progressListener.remove(consumer)
+    }
+
+    private val urlChangeListener = mutableSetOf<Consumer<String>>()
+
+    fun addURLChangeListener(handle: Consumer<String>) = check(urlChangeListener.add(handle)) {
+        "URL change listener: [$handle] already added"
+    }
+
+    fun removeURLChangeListener(handle: Consumer<String>) = check(urlChangeListener.remove(handle)) {
+        "URL change listener: [$handle] not yet exists"
+    }
+
+
     override fun addNotify() {
         super.addNotify()
 
@@ -89,7 +102,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
             setURLChangeListener(handle) { url ->
                 if (urlChangeListener.isEmpty()) return@setURLChangeListener
                 urlChangeListener.forEach {
-                    it.handleURLChange(url)
+                    it.accept(url)
                 }
             }
             SwingUtilities.invokeLater {
@@ -103,37 +116,32 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         }
     }
 
-    fun addProgressListener(consumer: Consumer<Float>): Unit {
-        progressListener.add(consumer)
-    }
-
-    fun removeProgressListener(consumer: Consumer<Float>) {
-        progressListener.remove(consumer)
-    }
-
-    fun addURLChangeListener(handle: URLChangeListener) = check(urlChangeListener.add(handle)) {
-        "URL change listener: [$handle] already added"
-    }
-
-    fun removeURLChangeListener(handle: URLChangeListener) = check(urlChangeListener.remove(handle)) {
-        "URL change listener: [$handle] not yet exists"
-    }
-
     fun loadUrl(url: String) = loadUrl(handle, url)
+    fun refresh() = refresh(handle)
+    fun goBack() = goBack(handle)
+    fun goForward() = goForward(handle)
+    fun canGoBack(): Boolean = canGoBack(handle)
+    fun canGoForward(): Boolean = canGoForward(handle)
 
     override fun close() = close0(handle).apply {
         handle = 0
     }
 
+    // --------------init and close--------------
     private external fun initAndAttach(): Long
     private external fun setProgressListener(webview: Long, consumer: Consumer<Float>)
     private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
-    private external fun close0(webview: Long)
     private external fun requestFocus0(webview: Long)
+    private external fun close0(webview: Long)
 
-
+    // ------------navigate function------------
     private external fun loadUrl(webview: Long, url: String)
+    private external fun refresh(webview: Long)
+    private external fun goBack(webview: Long): Boolean
+    private external fun goForward(webview: Long): Boolean
+    private external fun canGoBack(webview: Long): Boolean
+    private external fun canGoForward(webview: Long): Boolean
 
 
     @Suppress("UnsafeDynamicallyLoadedCode")

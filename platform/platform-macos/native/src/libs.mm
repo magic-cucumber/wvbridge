@@ -111,7 +111,7 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
 
-    runOnMainAsync(^{
+    runOnMainSync(^{
         if (!ctx) return;
         if (w <= 0 || h <= 0) return;
 
@@ -272,6 +272,142 @@ API_EXPORT(void, loadUrl, jlong handle, jstring url) {
 
         [ctx->webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:result]]];
     });
+}
+
+API_EXPORT(void, refresh, jlong handle) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return;
+
+    __block bool ok = true;
+    runOnMainSync(^{
+        if (!ctx || !ctx->webView) {
+            ok = false;
+            return;
+        }
+
+        [ctx->webView reload];
+    });
+    if (!ok) {
+        throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
+    }
+}
+
+API_EXPORT(jboolean, canGoBack, jlong handle) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return JNI_FALSE;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return JNI_FALSE;
+
+    __block BOOL can_go_back = NO;
+    __block bool ok = true;
+    runOnMainSync(^{
+        if (!ctx || !ctx->webView) {
+            ok = false;
+            return;
+        }
+        can_go_back = [ctx->webView canGoBack];
+    });
+    if (!ok) {
+        throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
+        return JNI_FALSE;
+    }
+    return can_go_back ? JNI_TRUE : JNI_FALSE;
+}
+
+API_EXPORT(jboolean, canGoForward, jlong handle) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return JNI_FALSE;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return JNI_FALSE;
+
+    __block BOOL can_go_forward = NO;
+    __block bool ok = true;
+    runOnMainSync(^{
+        if (!ctx || !ctx->webView) {
+            ok = false;
+            return;
+        }
+        can_go_forward = [ctx->webView canGoForward];
+    });
+    if (!ok) {
+        throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
+        return JNI_FALSE;
+    }
+    return can_go_forward ? JNI_TRUE : JNI_FALSE;
+}
+
+API_EXPORT(jboolean, goBack, jlong handle) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return JNI_FALSE;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return JNI_FALSE;
+
+    __block BOOL can_go_back_after = NO;
+    __block bool ok = true;
+    __block bool cannot_go_back = false;
+    runOnMainSync(^{
+        if (!ctx || !ctx->webView) {
+            ok = false;
+            return;
+        }
+        if (![ctx->webView canGoBack]) {
+            ok = false;
+            cannot_go_back = true;
+            return;
+        }
+
+        [ctx->webView goBack];
+        can_go_back_after = [ctx->webView canGoBack];
+    });
+    if (!ok) {
+        throw_jni_exception(env, cannot_go_back ? "java/lang/IllegalStateException" : "java/lang/RuntimeException",
+                            cannot_go_back ? "webview cannot go back" : "webview is not available");
+        return JNI_FALSE;
+    }
+    return can_go_back_after ? JNI_TRUE : JNI_FALSE;
+}
+
+API_EXPORT(jboolean, goForward, jlong handle) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return JNI_FALSE;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return JNI_FALSE;
+
+    __block BOOL can_go_forward_after = NO;
+    __block bool ok = true;
+    __block bool cannot_go_forward = false;
+    runOnMainSync(^{
+        if (!ctx || !ctx->webView) {
+            ok = false;
+            return;
+        }
+        if (![ctx->webView canGoForward]) {
+            ok = false;
+            cannot_go_forward = true;
+            return;
+        }
+
+        [ctx->webView goForward];
+        can_go_forward_after = [ctx->webView canGoForward];
+    });
+    if (!ok) {
+        throw_jni_exception(env, cannot_go_forward ? "java/lang/IllegalStateException" : "java/lang/RuntimeException",
+                            cannot_go_forward ? "webview cannot go forward" : "webview is not available");
+        return JNI_FALSE;
+    }
+    return can_go_forward_after ? JNI_TRUE : JNI_FALSE;
 }
 
 //private external fun setProgressListener(webview: Long, consumer: Consumer<Float>)
