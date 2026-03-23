@@ -25,8 +25,7 @@ val processBuild = tasks.register<Exec>("processBuild") {
             mkdir -p build && \
             cd build && \
             cmake .. && \
-            make &&\
-            echo $(shasum -a 256 lib/libwvbridge.so | cut -d ' ' -f 1) > build-linux.hash
+            make &&
         """.trimIndent()
     )
 }
@@ -35,7 +34,6 @@ val processBuild = tasks.register<Exec>("processBuild") {
 tasks.named<ProcessResources>("processResources") {
     dependsOn(processBuild)
     from(project.file("native/build/lib/libwvbridge.so"))
-    from(project.file("native/build/build-linux.hash"))
 }
 
 

@@ -32,7 +32,7 @@ private class BrowserPane(
     private val refreshButton = JButton("⟳")
 
     private val webView = WebViewBridgePanel {
-        loadUrl(initializeUrl)
+        loadUrl(if (urlField.text.isNullOrBlank()) initializeUrl else urlField.text)
     }
 
     private var isWebViewPresent = true

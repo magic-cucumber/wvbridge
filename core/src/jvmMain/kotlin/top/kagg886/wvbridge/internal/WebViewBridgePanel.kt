@@ -52,12 +52,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
             }
         })
-
-        addHierarchyListener { e ->
-            if (e.changeFlags and HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() != 0L && !isDisplayable) {
-                close()
-            }
-        }
     }
 
     override fun paint(g: Graphics?) {
@@ -87,6 +81,10 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         "URL change listener: [$handle] not yet exists"
     }
 
+    override fun removeNotify() {
+        super.removeNotify()
+        close()
+    }
 
     override fun addNotify() {
         super.addNotify()
