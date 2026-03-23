@@ -48,7 +48,7 @@ private class BrowserPane(
 
         webView.addPageLoadingStartListener { debug("pageLoadingStart", it) }
         webView.addPageLoadingProgressListener { debug("pageLoadingProgress", it) }
-        webView.addPageLoadingEndListener { debug("pageLoadingEnd", it) }
+        webView.addPageLoadingEndListener { a, b -> debug("pageLoadingEnd", "success: $a, $b") }
         webView.addURLChangeListener { debug("urlChange", it) }
         webView.addCanGoBackChangeListener { debug("canGoBackChange", it) }
         webView.addCanGoForwardChangeListener { debug("canGoForwardChange", it) }
@@ -68,10 +68,10 @@ private class BrowserPane(
                 progressBar.isVisible = p > 0f && p < 1f
             }
         }
-        webView.addPageLoadingEndListener {
+        webView.addPageLoadingEndListener { a, _ ->
             SwingUtilities.invokeLater {
                 isLoading = false
-                progressBar.value = if (it) 100 else progressBar.value
+                progressBar.value = if (a) 100 else progressBar.value
                 progressBar.isVisible = false
                 updateNavButtons()
             }

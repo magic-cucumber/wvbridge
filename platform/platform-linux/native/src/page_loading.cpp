@@ -3,6 +3,7 @@
 #include <glib.h>
 
 #include <algorithm>
+#include <string>
 
 #include "java_listener.h"
 
@@ -19,6 +20,7 @@ struct PageLoadingState {
 
     const std::atomic_bool* closing = nullptr;
     bool last_load_failed = false;
+    std::string last_error_reason;
 };
 
 namespace {
@@ -42,6 +44,7 @@ void notify_load_changed_cb(WebKitWebView* webview, WebKitLoadEvent load_event, 
     switch (load_event) {
         case WEBKIT_LOAD_STARTED: {
             state->last_load_failed = false;
+            state->last_error_reason.clear();
             java_listener_notify_string(state->start_listener, webkit_web_view_get_uri(webview));
             java_listener_notify_float(state->progress_listener, 0.0f);
             break;
@@ -53,7 +56,12 @@ void notify_load_changed_cb(WebKitWebView* webview, WebKitLoadEvent load_event, 
         }
         case WEBKIT_LOAD_FINISHED: {
             java_listener_notify_float(state->progress_listener, 1.0f);
-            java_listener_notify_boolean(state->end_listener, state->last_load_failed ? false : true);
+            const bool success = !state->last_load_failed;
+            java_listener_notify_boolean_string(
+                state->end_listener,
+                success,
+                success ? nullptr : state->last_error_reason.c_str()
+            );
             break;
         }
         case WEBKIT_LOAD_REDIRECTED:
@@ -89,6 +97,22 @@ gboolean load_failed_cb(WebKitWebView* webview,
     if (!state || should_skip_due_to_closing(state)) return FALSE;
 
     state->last_load_failed = true;
+    std::string reason = "webkitgtk.load-failed";
+    if (error) {
+        reason += ": domain=";
+        const char* domain_name = g_quark_to_string(error->domain);
+        reason += domain_name ? domain_name : "unknown";
+        reason += ", code=" + std::to_string(error->code);
+        if (error->message && error->message[0] != '\0') {
+            reason += ", message=";
+            reason += error->message;
+        }
+    }
+    if (failing_uri && failing_uri[0] != '\0') {
+        reason += ", uri=";
+        reason += failing_uri;
+    }
+    state->last_error_reason = reason;
     return FALSE;
 }
 
@@ -129,7 +153,7 @@ void page_loading_set_progress_listener(JNIEnv* env, PageLoadingState* state, jo
 
 void page_loading_set_end_listener(JNIEnv* env, PageLoadingState* state, jobject listener) {
     if (!state) return;
-    java_listener_set(env, state->end_listener, listener);
+    java_listener_set_two_args(env, state->end_listener, listener);
 }
 
 void page_loading_install(WebKitWebView* webview, PageLoadingState* state, const std::atomic_bool* closing_flag) {

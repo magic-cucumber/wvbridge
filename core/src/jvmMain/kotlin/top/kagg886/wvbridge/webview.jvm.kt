@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import java.awt.Component
+import java.util.function.BiConsumer
 import java.util.function.Consumer
 
 @Composable
@@ -36,8 +37,8 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
     }
 
     DisposableEffect(Unit) {
-        val listener: Consumer<Boolean> = {
-            state.state = LoadingState.LoadingEnd(it)
+        val listener: BiConsumer<Boolean, String?> = { success,reason->
+            state.state = LoadingState.LoadingEnd(success,reason)
         }
         state.instance.addPageLoadingEndListener(listener)
         onDispose {

@@ -16,6 +16,7 @@ struct JavaListenerState {
     jobject global = nullptr;
     jmethodID mid = nullptr;
     bool use_accept = true;
+    bool two_args = false;
 };
 
 struct WebViewContext {

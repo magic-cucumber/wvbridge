@@ -25,17 +25,31 @@ void detach_env(JavaVM *jvm, bool didAttach) {
     }
 }
 
-void call_callback(JNIEnv *env, JavaCallbackState *state, jobject arg) {
-    if (env == nullptr || state == nullptr || state->listener == nullptr || state->method == nullptr || arg == nullptr) {
+void call_callback(JNIEnv *env, JavaCallbackState *state, jobject arg1, jobject arg2) {
+    if (env == nullptr || state == nullptr || state->listener == nullptr || state->method == nullptr) {
         return;
     }
 
-    if (state->useAccept) {
-        env->CallVoidMethod(state->listener, state->method, arg);
+    if (state->twoArgs) {
+        if (state->useAccept) {
+            env->CallVoidMethod(state->listener, state->method, arg1, arg2);
+        } else {
+            jobject result = env->CallObjectMethod(state->listener, state->method, arg1, arg2);
+            if (result != nullptr) {
+                env->DeleteLocalRef(result);
+            }
+        }
     } else {
-        jobject result = env->CallObjectMethod(state->listener, state->method, arg);
-        if (result != nullptr) {
-            env->DeleteLocalRef(result);
+        if (arg1 == nullptr) {
+            return;
+        }
+        if (state->useAccept) {
+            env->CallVoidMethod(state->listener, state->method, arg1);
+        } else {
+            jobject result = env->CallObjectMethod(state->listener, state->method, arg1);
+            if (result != nullptr) {
+                env->DeleteLocalRef(result);
+            }
         }
     }
 
@@ -52,6 +66,7 @@ void java_callback_init(JavaCallbackState *state, JavaVM *jvm) {
     state->listener = nullptr;
     state->method = nullptr;
     state->useAccept = YES;
+    state->twoArgs = NO;
 }
 
 void java_callback_set(JNIEnv *env, JavaCallbackState *state, jobject listener) {
@@ -61,6 +76,7 @@ void java_callback_set(JNIEnv *env, JavaCallbackState *state, jobject listener) 
         env->DeleteGlobalRef(state->listener);
         state->listener = nullptr;
         state->method = nullptr;
+        state->twoArgs = NO;
     }
 
     if (listener == nullptr) return;
@@ -96,6 +112,53 @@ void java_callback_set(JNIEnv *env, JavaCallbackState *state, jobject listener) 
     state->listener = global;
     state->method = method;
     state->useAccept = useAccept;
+    state->twoArgs = NO;
+}
+
+void java_callback_set_two_args(JNIEnv *env, JavaCallbackState *state, jobject listener) {
+    if (env == nullptr || state == nullptr) return;
+
+    if (state->listener != nullptr) {
+        env->DeleteGlobalRef(state->listener);
+        state->listener = nullptr;
+        state->method = nullptr;
+        state->twoArgs = NO;
+    }
+
+    if (listener == nullptr) return;
+
+    jobject global = env->NewGlobalRef(listener);
+    if (global == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+    }
+
+    jclass cls = env->GetObjectClass(listener);
+    if (cls == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteGlobalRef(global);
+        return;
+    }
+
+    jmethodID method = env->GetMethodID(cls, "accept", "(Ljava/lang/Object;Ljava/lang/Object;)V");
+    BOOL useAccept = YES;
+    if (method == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        method = env->GetMethodID(cls, "invoke", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        useAccept = NO;
+    }
+    env->DeleteLocalRef(cls);
+
+    if (method == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteGlobalRef(global);
+        return;
+    }
+
+    state->listener = global;
+    state->method = method;
+    state->useAccept = useAccept;
+    state->twoArgs = YES;
 }
 
 void java_callback_dispose(JavaCallbackState *state) {
@@ -124,7 +187,7 @@ void java_callback_call_string(JavaCallbackState *state, NSString *value) {
     const char *utf8 = (value ?: @"").UTF8String;
     jstring boxed = env->NewStringUTF(utf8 ? utf8 : "");
     if (boxed != nullptr) {
-        call_callback(env, state, boxed);
+        call_callback(env, state, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -161,7 +224,7 @@ void java_callback_call_float(JavaCallbackState *state, float value) {
     jobject boxed = env->CallStaticObjectMethod(cls, valueOf, value);
     env->DeleteLocalRef(cls);
     if (boxed != nullptr && !env->ExceptionCheck()) {
-        call_callback(env, state, boxed);
+        call_callback(env, state, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -198,11 +261,62 @@ void java_callback_call_boolean(JavaCallbackState *state, BOOL value) {
     jobject boxed = env->CallStaticObjectMethod(cls, valueOf, value ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(cls);
     if (boxed != nullptr && !env->ExceptionCheck()) {
-        call_callback(env, state, boxed);
+        call_callback(env, state, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
     }
 
+    detach_env(state->jvm, didAttach);
+}
+
+void java_callback_call_boolean_string(JavaCallbackState *state, BOOL value, NSString *message) {
+    if (state == nullptr || state->jvm == nullptr || state->listener == nullptr || state->method == nullptr) return;
+
+    bool didAttach = false;
+    JNIEnv *env = attach_env(state->jvm, &didAttach);
+    if (env == nullptr) {
+        detach_env(state->jvm, didAttach);
+        return;
+    }
+
+    jclass boolClass = env->FindClass("java/lang/Boolean");
+    if (boolClass == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        detach_env(state->jvm, didAttach);
+        return;
+    }
+
+    jmethodID valueOf = env->GetStaticMethodID(boolClass, "valueOf", "(Z)Ljava/lang/Boolean;");
+    if (valueOf == nullptr) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteLocalRef(boolClass);
+        detach_env(state->jvm, didAttach);
+        return;
+    }
+
+    jobject boxedBool = env->CallStaticObjectMethod(boolClass, valueOf, value ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(boolClass);
+    if (boxedBool == nullptr || env->ExceptionCheck()) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        detach_env(state->jvm, didAttach);
+        return;
+    }
+
+    jstring boxedMessage = nullptr;
+    if (message != nil) {
+        const char *utf8 = message.UTF8String;
+        boxedMessage = env->NewStringUTF(utf8 ? utf8 : "");
+        if (boxedMessage == nullptr || env->ExceptionCheck()) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            env->DeleteLocalRef(boxedBool);
+            detach_env(state->jvm, didAttach);
+            return;
+        }
+    }
+
+    call_callback(env, state, boxedBool, boxedMessage);
+    env->DeleteLocalRef(boxedBool);
+    if (boxedMessage != nullptr) env->DeleteLocalRef(boxedMessage);
     detach_env(state->jvm, didAttach);
 }

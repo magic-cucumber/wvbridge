@@ -27,7 +27,7 @@
 }
 
 - (void)updateEndListener:(JNIEnv *)env listener:(jobject)listener {
-    java_callback_set(env, &_endCallback, listener);
+    java_callback_set_two_args(env, &_endCallback, listener);
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath
@@ -51,21 +51,27 @@
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     (void) webView;
     (void) navigation;
-    java_callback_call_boolean(&_endCallback, YES);
+    java_callback_call_boolean_string(&_endCallback, YES, nil);
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     (void) webView;
     (void) navigation;
-    (void) error;
-    java_callback_call_boolean(&_endCallback, NO);
+    NSString *reason = [NSString stringWithFormat:@"wkwebview.navigation.failed: domain=%@, code=%ld, message=%@",
+                                                  error.domain ?: @"unknown",
+                                                  (long) error.code,
+                                                  error.localizedDescription ?: @""];
+    java_callback_call_boolean_string(&_endCallback, NO, reason);
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     (void) webView;
     (void) navigation;
-    (void) error;
-    java_callback_call_boolean(&_endCallback, NO);
+    NSString *reason = [NSString stringWithFormat:@"wkwebview.navigation.failed: domain=%@, code=%ld, message=%@",
+                                                  error.domain ?: @"unknown",
+                                                  (long) error.code,
+                                                  error.localizedDescription ?: @""];
+    java_callback_call_boolean_string(&_endCallback, NO, reason);
 }
 
 - (void)dealloc {

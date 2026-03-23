@@ -11,5 +11,5 @@ public sealed interface LoadingState {
     public data object NotReady : LoadingState
     public object Ready : LoadingState
     public data class Loading(val progress: Float) : LoadingState
-    public data class LoadingEnd(val success: Boolean) : LoadingState
+    public data class LoadingEnd(val success: Boolean, var reason: String?) : LoadingState
 }

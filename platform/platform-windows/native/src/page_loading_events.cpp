@@ -3,11 +3,21 @@
 #include "java_listener.h"
 #include "webview2_callback.h"
 
+#include <string>
+
 namespace {
 
 constexpr float kPhaseStarted = 0.0f;
 constexpr float kPhaseContentLoading = 0.5f;
 constexpr float kPhaseCompleted = 1.0f;
+
+std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs *args) {
+    COREWEBVIEW2_WEB_ERROR_STATUS error_status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
+    if (!args || FAILED(args->get_WebErrorStatus(&error_status))) {
+        return L"webview2.navigation.failed";
+    }
+    return L"webview2.navigation.failed: WebErrorStatus=" + std::to_wstring(static_cast<int>(error_status));
+}
 
 } // namespace
 
@@ -54,12 +64,21 @@ void register_page_loading_events(WebViewContext *ctx) {
                 if (!ctx || ctx->closing.load(std::memory_order_acquire)) return S_OK;
 
                 BOOL success = FALSE;
+                std::wstring error_reason;
                 if (args) {
                     args->get_IsSuccess(&success);
+                    if (success != TRUE) {
+                        error_reason = format_failure_reason(args);
+                    }
                 }
 
                 notify_float(ctx, ctx->page_loading_progress_listener, kPhaseCompleted);
-                notify_boolean(ctx, ctx->page_loading_end_listener, success == TRUE);
+                notify_boolean_string(
+                    ctx,
+                    ctx->page_loading_end_listener,
+                    success == TRUE,
+                    success == TRUE ? nullptr : error_reason.c_str()
+                );
                 return S_OK;
             }
         ).Get(),

@@ -46,7 +46,7 @@ private fun BrowserDialog(initialUrl: String) {
     LaunchedEffect(webViewState.state) {
         val state = webViewState.state
         if (state is LoadingState.LoadingEnd && !state.success) {
-            urlInput = "加载错误！"
+            urlInput = state.reason ?: "load error"
         }
     }
 

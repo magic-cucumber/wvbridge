@@ -7,6 +7,7 @@ struct JavaListener {
     jobject callback = nullptr;
     jmethodID method = nullptr;
     bool use_accept = true;
+    bool two_args = false;
 };
 
 namespace {
@@ -34,8 +35,9 @@ void detach_env(JavaVM* jvm, bool did_attach) {
     }
 }
 
-void call_listener(JavaListener* listener, jobject arg) {
-    if (!listener || !listener->jvm || !listener->callback || !listener->method || !arg) return;
+void call_listener(JavaListener* listener, jobject arg1, jobject arg2) {
+    if (!listener || !listener->jvm || !listener->callback || !listener->method) return;
+    if (!listener->two_args && !arg1) return;
 
     bool did_attach = false;
     JNIEnv* env = get_env(listener->jvm, &did_attach);
@@ -44,11 +46,20 @@ void call_listener(JavaListener* listener, jobject arg) {
         return;
     }
 
-    if (listener->use_accept) {
-        env->CallVoidMethod(listener->callback, listener->method, arg);
+    if (listener->two_args) {
+        if (listener->use_accept) {
+            env->CallVoidMethod(listener->callback, listener->method, arg1, arg2);
+        } else {
+            jobject result = env->CallObjectMethod(listener->callback, listener->method, arg1, arg2);
+            if (result) env->DeleteLocalRef(result);
+        }
     } else {
-        jobject result = env->CallObjectMethod(listener->callback, listener->method, arg);
-        if (result) env->DeleteLocalRef(result);
+        if (listener->use_accept) {
+            env->CallVoidMethod(listener->callback, listener->method, arg1);
+        } else {
+            jobject result = env->CallObjectMethod(listener->callback, listener->method, arg1);
+            if (result) env->DeleteLocalRef(result);
+        }
     }
 
     if (env->ExceptionCheck()) {
@@ -93,6 +104,7 @@ void java_listener_set(JNIEnv* env, JavaListener* listener, jobject callback) {
         env->DeleteGlobalRef(listener->callback);
         listener->callback = nullptr;
         listener->method = nullptr;
+        listener->two_args = false;
     }
 
     if (!callback) return;
@@ -128,6 +140,53 @@ void java_listener_set(JNIEnv* env, JavaListener* listener, jobject callback) {
     listener->callback = global;
     listener->method = method;
     listener->use_accept = use_accept;
+    listener->two_args = false;
+}
+
+void java_listener_set_two_args(JNIEnv* env, JavaListener* listener, jobject callback) {
+    if (!env || !listener) return;
+
+    if (listener->callback) {
+        env->DeleteGlobalRef(listener->callback);
+        listener->callback = nullptr;
+        listener->method = nullptr;
+        listener->two_args = false;
+    }
+
+    if (!callback) return;
+
+    jobject global = env->NewGlobalRef(callback);
+    if (!global) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+    }
+
+    jclass cls = env->GetObjectClass(callback);
+    if (!cls) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteGlobalRef(global);
+        return;
+    }
+
+    jmethodID method = env->GetMethodID(cls, "accept", "(Ljava/lang/Object;Ljava/lang/Object;)V");
+    bool use_accept = true;
+    if (!method) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        method = env->GetMethodID(cls, "invoke", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        use_accept = false;
+    }
+    env->DeleteLocalRef(cls);
+
+    if (!method) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteGlobalRef(global);
+        return;
+    }
+
+    listener->callback = global;
+    listener->method = method;
+    listener->use_accept = use_accept;
+    listener->two_args = true;
 }
 
 void java_listener_notify_string(JavaListener* listener, const char* value) {
@@ -142,7 +201,7 @@ void java_listener_notify_string(JavaListener* listener, const char* value) {
 
     jstring boxed = env->NewStringUTF(value ? value : "");
     if (boxed) {
-        call_listener(listener, boxed);
+        call_listener(listener, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -179,7 +238,7 @@ void java_listener_notify_float(JavaListener* listener, float value) {
     jobject boxed = env->CallStaticObjectMethod(cls, value_of, value);
     env->DeleteLocalRef(cls);
     if (boxed && !env->ExceptionCheck()) {
-        call_listener(listener, boxed);
+        call_listener(listener, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
@@ -216,12 +275,62 @@ void java_listener_notify_boolean(JavaListener* listener, bool value) {
     jobject boxed = env->CallStaticObjectMethod(cls, value_of, value ? JNI_TRUE : JNI_FALSE);
     env->DeleteLocalRef(cls);
     if (boxed && !env->ExceptionCheck()) {
-        call_listener(listener, boxed);
+        call_listener(listener, boxed, nullptr);
         env->DeleteLocalRef(boxed);
     } else if (env->ExceptionCheck()) {
         env->ExceptionClear();
     }
 
+    detach_env(listener->jvm, did_attach);
+}
+
+void java_listener_notify_boolean_string(JavaListener* listener, bool value, const char* message) {
+    if (!listener || !listener->jvm || !listener->callback || !listener->method) return;
+
+    bool did_attach = false;
+    JNIEnv* env = get_env(listener->jvm, &did_attach);
+    if (!env) {
+        detach_env(listener->jvm, did_attach);
+        return;
+    }
+
+    jclass bool_cls = env->FindClass("java/lang/Boolean");
+    if (!bool_cls) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        detach_env(listener->jvm, did_attach);
+        return;
+    }
+
+    jmethodID bool_value_of = env->GetStaticMethodID(bool_cls, "valueOf", "(Z)Ljava/lang/Boolean;");
+    if (!bool_value_of) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->DeleteLocalRef(bool_cls);
+        detach_env(listener->jvm, did_attach);
+        return;
+    }
+
+    jobject boxed_bool = env->CallStaticObjectMethod(bool_cls, bool_value_of, value ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(bool_cls);
+    if (!boxed_bool || env->ExceptionCheck()) {
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        detach_env(listener->jvm, did_attach);
+        return;
+    }
+
+    jstring boxed_message = nullptr;
+    if (message) {
+        boxed_message = env->NewStringUTF(message);
+        if (!boxed_message || env->ExceptionCheck()) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            env->DeleteLocalRef(boxed_bool);
+            detach_env(listener->jvm, did_attach);
+            return;
+        }
+    }
+
+    call_listener(listener, boxed_bool, boxed_message);
+    env->DeleteLocalRef(boxed_bool);
+    if (boxed_message) env->DeleteLocalRef(boxed_message);
     detach_env(listener->jvm, did_attach);
 }
 

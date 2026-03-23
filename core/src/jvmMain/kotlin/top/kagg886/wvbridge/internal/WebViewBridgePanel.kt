@@ -9,6 +9,7 @@ import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
 import java.awt.Window
+import java.util.function.BiConsumer
 import javax.swing.SwingUtilities
 
 /**
@@ -38,12 +39,6 @@ import javax.swing.SwingUtilities
 public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
 
-    override fun getLocationOnScreen(): Point = try {
-        super.getLocationOnScreen()
-    } catch (_: Exception) {
-        bounds.location
-    }
-
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
             isFocusable = true
@@ -70,30 +65,24 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 if (handle == 0L) return
-                val point = nativeUpdatePoint()
-                update(handle, width, height, point.x, point.y)
+                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
             }
 
             override fun componentMoved(e: ComponentEvent) {
                 if (handle == 0L) return
-                val point = nativeUpdatePoint()
-                update(handle, width, height, point.x, point.y)
+                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
             }
         })
     }
 
-    private fun nativeUpdatePoint(): Point {
-        if (jvmTarget != JvmTarget.MACOS) {
-            return locationOnScreen
-        }
-
-        val window = SwingUtilities.getWindowAncestor(this) as? Window ?: return bounds.location
+    public override fun getLocationOnScreen(): Point {
+        val window = SwingUtilities.getWindowAncestor(this) ?: return bounds.location
         val insets = window.insets
         val point = SwingUtilities.convertPoint(this, 0, 0, window)
         point.translate(-insets.left, -insets.top)
+        println(point)
         return point
     }
-
     override fun paint(g: Graphics?) {
         super.paint(g)
         if (g == null) return
@@ -104,33 +93,39 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
     private val urlChangeListener = mutableSetOf<Consumer<String>>()
     private val pageLoadingStartListener = mutableSetOf<Consumer<String>>()
     private val pageLoadingProgressListener = mutableSetOf<Consumer<Float>>()
-    private val pageLoadingEndListener = mutableSetOf<Consumer<Boolean>>()
+    private val pageLoadingEndListener = mutableSetOf<BiConsumer<Boolean, String?>>()
     private val canGoBackChangeListener = mutableSetOf<Consumer<Boolean>>()
     private val canGoForwardChangeListener = mutableSetOf<Consumer<Boolean>>()
 
-    public fun addPageLoadingStartListener(handle: Consumer<String>): Unit = check(pageLoadingStartListener.add(handle)) {
-        "Page loading start listener: [$handle] already added"
-    }
+    public fun addPageLoadingStartListener(handle: Consumer<String>): Unit =
+        check(pageLoadingStartListener.add(handle)) {
+            "Page loading start listener: [$handle] already added"
+        }
 
-    public fun removePageLoadingStartListener(handle: Consumer<String>): Unit = check(pageLoadingStartListener.remove(handle)) {
-        "Page loading start listener: [$handle] not yet exists"
-    }
+    public fun removePageLoadingStartListener(handle: Consumer<String>): Unit =
+        check(pageLoadingStartListener.remove(handle)) {
+            "Page loading start listener: [$handle] not yet exists"
+        }
 
-    public fun addPageLoadingProgressListener(handle: Consumer<Float>): Unit = check(pageLoadingProgressListener.add(handle)) {
-        "Page loading progress listener: [$handle] already added"
-    }
+    public fun addPageLoadingProgressListener(handle: Consumer<Float>): Unit =
+        check(pageLoadingProgressListener.add(handle)) {
+            "Page loading progress listener: [$handle] already added"
+        }
 
-    public fun removePageLoadingProgressListener(handle: Consumer<Float>): Unit = check(pageLoadingProgressListener.remove(handle)) {
-        "Page loading progress listener: [$handle] not yet exists"
-    }
+    public fun removePageLoadingProgressListener(handle: Consumer<Float>): Unit =
+        check(pageLoadingProgressListener.remove(handle)) {
+            "Page loading progress listener: [$handle] not yet exists"
+        }
 
-    public fun addPageLoadingEndListener(handle: Consumer<Boolean>): Unit = check(pageLoadingEndListener.add(handle)) {
-        "Page loading end listener: [$handle] already added"
-    }
+    public fun addPageLoadingEndListener(handle: BiConsumer<Boolean, String?>): Unit =
+        check(pageLoadingEndListener.add(handle)) {
+            "Page loading end listener: [$handle] already added"
+        }
 
-    public fun removePageLoadingEndListener(handle: Consumer<Boolean>): Unit = check(pageLoadingEndListener.remove(handle)) {
-        "Page loading end listener: [$handle] not yet exists"
-    }
+    public fun removePageLoadingEndListener(handle: BiConsumer<Boolean, String?>): Unit =
+        check(pageLoadingEndListener.remove(handle)) {
+            "Page loading end listener: [$handle] not yet exists"
+        }
 
     public fun addURLChangeListener(handle: Consumer<String>): Unit = check(urlChangeListener.add(handle)) {
         "URL change listener: [$handle] already added"
@@ -140,21 +135,25 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
         "URL change listener: [$handle] not yet exists"
     }
 
-    public fun addCanGoBackChangeListener(handle: Consumer<Boolean>): Unit = check(canGoBackChangeListener.add(handle)) {
-        "canGoBack change listener: [$handle] already added"
-    }
+    public fun addCanGoBackChangeListener(handle: Consumer<Boolean>): Unit =
+        check(canGoBackChangeListener.add(handle)) {
+            "canGoBack change listener: [$handle] already added"
+        }
 
-    public fun removeCanGoBackChangeListener(handle: Consumer<Boolean>): Unit = check(canGoBackChangeListener.remove(handle)) {
-        "canGoBack change listener: [$handle] not yet exists"
-    }
+    public fun removeCanGoBackChangeListener(handle: Consumer<Boolean>): Unit =
+        check(canGoBackChangeListener.remove(handle)) {
+            "canGoBack change listener: [$handle] not yet exists"
+        }
 
-    public fun addCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit = check(canGoForwardChangeListener.add(handle)) {
-        "canGoForward change listener: [$handle] already added"
-    }
+    public fun addCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit =
+        check(canGoForwardChangeListener.add(handle)) {
+            "canGoForward change listener: [$handle] already added"
+        }
 
-    public fun removeCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit = check(canGoForwardChangeListener.remove(handle)) {
-        "canGoForward change listener: [$handle] not yet exists"
-    }
+    public fun removeCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit =
+        check(canGoForwardChangeListener.remove(handle)) {
+            "canGoForward change listener: [$handle] not yet exists"
+        }
 
     public fun addProgressListener(consumer: Consumer<Float>): Unit = addPageLoadingProgressListener(consumer)
     public fun removeProgressListener(consumer: Consumer<Float>): Unit = removePageLoadingProgressListener(consumer)
@@ -180,9 +179,9 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
                     it.accept(progress)
                 }
             }
-            setPageLoadingEndListener(handle) { success ->
+            setPageLoadingEndListener(handle) { success, reason ->
                 pageLoadingEndListener.forEach {
-                    it.accept(success)
+                    it.accept(success, reason)
                 }
             }
             setURLChangeListener(handle) { url ->
@@ -202,8 +201,7 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
                 }
             }
             SwingUtilities.invokeLater {
-                val point = nativeUpdatePoint()
-                update(handle, width, height, point.x, point.y)
+                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
                 if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
                     requestFocus0(handle)
                 }
@@ -233,7 +231,7 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
 
     private external fun setPageLoadingStartListener(webview: Long, consumer: Consumer<String>)
     private external fun setPageLoadingProgressListener(webview: Long, consumer: Consumer<Float>)
-    private external fun setPageLoadingEndListener(webview: Long, consumer: Consumer<Boolean>)
+    private external fun setPageLoadingEndListener(webview: Long, consumer: BiConsumer<Boolean, String?>)
     private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
     private external fun setCanGoBackChangeListener(webview: Long, handler: Consumer<Boolean>)
     private external fun setCanGoForwardChangeListener(webview: Long, handler: Consumer<Boolean>)

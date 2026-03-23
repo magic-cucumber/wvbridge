@@ -860,7 +860,7 @@ API_EXPORT(void, setPageLoadingEndListener, jlong handle, jobject listener) {
     }
     auto *ctx = reinterpret_cast<WebViewContext *>(handle);
     if (!ctx) return;
-    replace_listener(env, ctx->page_loading_end_listener, listener);
+    replace_listener_with_two_args(env, ctx->page_loading_end_listener, listener);
 }
 
 API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
