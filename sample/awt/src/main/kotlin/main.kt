@@ -16,6 +16,7 @@ import javax.swing.*
 private class BrowserPane(
     private val title: String,
     initializeUrl: String,
+    webViewInitiallyActive: Boolean = true,
 ) : JPanel(GridBagLayout()) {
     private val progressBar = JProgressBar(0, 100).apply {
         value = 0
@@ -35,17 +36,24 @@ private class BrowserPane(
         loadUrl(if (urlField.text.isNullOrBlank()) initializeUrl else urlField.text)
     }
 
-    private var isWebViewPresent = true
+    private var isWebViewPresent = webViewInitiallyActive
     private var canGoBack = false
     private var canGoForward = false
+
+    private fun logState(state: String, value: Any?) {
+        println("[$title][$state] $value")
+    }
 
     init {
         border = BorderFactory.createTitledBorder(title)
 
-        webView.addPageLoadingProgressListener(::println)
-        webView.addURLChangeListener {
-            println("[$title] $it")
-        }
+        webView.addPageLoadingStartListener { url -> logState("pageLoadingStart", url) }
+        webView.addPageLoadingProgressListener { progress -> logState("pageLoadingProgress", progress) }
+        webView.addPageLoadingEndListener { success -> logState("pageLoadingEnd", success) }
+        webView.addURLChangeListener { url -> logState("urlChange", url) }
+        webView.addCanGoBackChangeListener { canGoBack -> logState("canGoBackChange", canGoBack) }
+        webView.addCanGoForwardChangeListener { canGoForward -> logState("canGoForwardChange", canGoForward) }
+
         webView.addPageLoadingStartListener {
             SwingUtilities.invokeLater {
                 progressBar.value = 0
@@ -133,7 +141,9 @@ private class BrowserPane(
                 insets = Insets(2, 10, 10, 10)
             }
         )
-        addWebView()
+        if (isWebViewPresent) {
+            addWebView()
+        }
     }
 
     fun toggleWebView(): Boolean {
@@ -196,7 +206,7 @@ fun main() = SwingUtilities.invokeLater {
 
     val initializeUrl = "https://www.baidu.com"
     val leftPane = BrowserPane("左侧 WebView", initializeUrl)
-    val rightPane = BrowserPane("右侧 WebView", initializeUrl)
+    val rightPane = BrowserPane("右侧 WebView", initializeUrl, webViewInitiallyActive = false)
 
     frame.add(leftPane)
     frame.add(rightPane)
@@ -204,7 +214,7 @@ fun main() = SwingUtilities.invokeLater {
     val menuBar = JMenuBar()
     val menu = JMenu("操作")
     val toggleLeftItem = JMenuItem("删除左侧 WebView")
-    val toggleRightItem = JMenuItem("删除右侧 WebView")
+    val toggleRightItem = JMenuItem("显示右侧 WebView")
 
     toggleLeftItem.addActionListener {
         val isPresent = leftPane.toggleWebView()
