@@ -62,118 +62,6 @@ static bool ensure_host_view_attached(WebViewContext *ctx) {
     return ctx->hostView != nil && ctx->hostWindow != nil;
 }
 
-static bool query_component_bounds(JNIEnv *env, jobject component, CGRect *outBounds, CALayer **outWindowLayer) {
-    if (!env || !component || !outBounds) return false;
-
-    bool ok = false;
-
-    jclass swingUtilitiesCls = env->FindClass("javax/swing/SwingUtilities");
-    if (swingUtilitiesCls != nullptr) {
-        jmethodID getWindowAncestorMID = env->GetStaticMethodID(
-            swingUtilitiesCls,
-            "getWindowAncestor",
-            "(Ljava/awt/Component;)Ljava/awt/Window;"
-        );
-        jmethodID convertPointMID = env->GetStaticMethodID(
-            swingUtilitiesCls,
-            "convertPoint",
-            "(Ljava/awt/Component;IILjava/awt/Component;)Ljava/awt/Point;"
-        );
-        if (getWindowAncestorMID && convertPointMID) {
-            jobject window = env->CallStaticObjectMethod(swingUtilitiesCls, getWindowAncestorMID, component);
-            if (!env->ExceptionCheck() && window != nullptr) {
-                jint insetLeft = 0;
-                jint insetTop = 0;
-                jclass windowCls = env->GetObjectClass(window);
-                if (windowCls != nullptr) {
-                    jmethodID getInsetsMID = env->GetMethodID(windowCls, "getInsets", "()Ljava/awt/Insets;");
-                    if (getInsetsMID) {
-                        jobject insets = env->CallObjectMethod(window, getInsetsMID);
-                        if (!env->ExceptionCheck() && insets != nullptr) {
-                            jclass insetsCls = env->GetObjectClass(insets);
-                            if (insetsCls != nullptr) {
-                                jfieldID leftField = env->GetFieldID(insetsCls, "left", "I");
-                                jfieldID topField = env->GetFieldID(insetsCls, "top", "I");
-                                if (leftField) insetLeft = env->GetIntField(insets, leftField);
-                                if (topField) insetTop = env->GetIntField(insets, topField);
-                                env->DeleteLocalRef(insetsCls);
-                            }
-                            env->DeleteLocalRef(insets);
-                        }
-                    }
-                    env->DeleteLocalRef(windowCls);
-                }
-
-                jobject point = env->CallStaticObjectMethod(
-                    swingUtilitiesCls,
-                    convertPointMID,
-                    component,
-                    0,
-                    0,
-                    window
-                );
-                if (!env->ExceptionCheck() && point != nullptr) {
-                    jclass pointCls = env->GetObjectClass(point);
-                    if (pointCls != nullptr) {
-                        jfieldID xField = env->GetFieldID(pointCls, "x", "I");
-                        jfieldID yField = env->GetFieldID(pointCls, "y", "I");
-                        if (xField && yField) {
-                            *outBounds = CGRectMake(
-                                (CGFloat) (env->GetIntField(point, xField) - insetLeft),
-                                (CGFloat) (env->GetIntField(point, yField) - insetTop),
-                                0,
-                                0
-                            );
-                            ok = true;
-                        }
-                        env->DeleteLocalRef(pointCls);
-                    }
-                    env->DeleteLocalRef(point);
-                }
-            }
-            if (window != nullptr) {
-                env->DeleteLocalRef(window);
-            }
-        }
-        env->DeleteLocalRef(swingUtilitiesCls);
-    }
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-    }
-
-    JAWT awt;
-    awt.version = JAWT_VERSION_1_4 | JAWT_MACOSX_USE_CALAYER;
-    if (JAWT_GetAWT(env, &awt) == JNI_FALSE) return false;
-
-    JAWT_DrawingSurface *ds = awt.GetDrawingSurface(env, component);
-    if (!ds) return false;
-
-    bool locked = false;
-    JAWT_DrawingSurfaceInfo *dsi = nullptr;
-
-    jint lock = ds->Lock(ds);
-    if (!(lock & JAWT_LOCK_ERROR)) {
-        locked = true;
-        dsi = ds->GetDrawingSurfaceInfo(ds);
-        if (dsi) {
-            if (outWindowLayer) {
-                id <JAWT_SurfaceLayers> surfaceLayers = (__bridge id <JAWT_SurfaceLayers>) dsi->platformInfo;
-                *outWindowLayer = surfaceLayers ? surfaceLayers.windowLayer : nil;
-            }
-        }
-    }
-
-    if (dsi) {
-        ds->FreeDrawingSurfaceInfo(dsi);
-    }
-    if (locked) {
-        ds->Unlock(ds);
-    }
-    awt.FreeDrawingSurface(ds);
-
-    return ok;
-}
-
 API_EXPORT(jlong, initAndAttach) {
     // JAWT surface layers
     JAWT awt;
@@ -265,9 +153,6 @@ API_EXPORT(jlong, initAndAttach) {
 }
 
 API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
-    (void) x;
-    (void) y;
-
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
@@ -275,39 +160,26 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
 
-    CGRect componentBounds = CGRectZero;
-    CALayer *windowLayer = nil;
-    if (!query_component_bounds(env, thiz, &componentBounds, &windowLayer)) {
-        componentBounds = CGRectMake(0, 0, w, h);
-    }
-    componentBounds.size.width = (CGFloat) w;
-    componentBounds.size.height = (CGFloat) h;
-
     runOnMainAsync(^{
         if (!ctx) return;
         if (w <= 0 || h <= 0) return;
 
-        if (windowLayer && ctx->windowLayer != windowLayer) {
-            [ctx->windowLayer release];
-            ctx->windowLayer = [windowLayer retain];
-        }
-
-        CGRect layerFrame = componentBounds;
+        CGRect layerFrame = CGRectMake((CGFloat) x, (CGFloat) y, (CGFloat) w, (CGFloat) h);
         if (ctx->windowLayer) {
-            layerFrame.origin.y = ctx->windowLayer.bounds.size.height - componentBounds.origin.y - componentBounds.size.height;
+            layerFrame.origin.y = ctx->windowLayer.bounds.size.height - layerFrame.origin.y - layerFrame.size.height;
         }
         ctx->rootLayer.frame = layerFrame;
 
         if (!ctx->webView) return;
-        if (!ensure_host_view_attached(ctx)) return;
+//        if (!ensure_host_view_attached(ctx)) return;
 
         NSRect target = NSMakeRect(
-            componentBounds.origin.x,
+            (CGFloat) x,
             ctx->hostView.isFlipped
-                ? componentBounds.origin.y
-                : ctx->hostView.bounds.size.height - componentBounds.origin.y - componentBounds.size.height,
-            componentBounds.size.width,
-            componentBounds.size.height
+                ? (CGFloat) y
+                : ctx->hostView.bounds.size.height - (CGFloat) y - (CGFloat) h,
+            (CGFloat) w,
+            (CGFloat) h
         );
 
         ctx->webView.frame = target;

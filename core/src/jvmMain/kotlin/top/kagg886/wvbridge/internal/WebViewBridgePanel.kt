@@ -8,6 +8,7 @@ import java.awt.event.*
 import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
+import java.awt.Window
 import javax.swing.SwingUtilities
 
 /**
@@ -69,14 +70,28 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) {
                 if (handle == 0L) return
-                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
+                val point = nativeUpdatePoint()
+                update(handle, width, height, point.x, point.y)
             }
 
             override fun componentMoved(e: ComponentEvent) {
                 if (handle == 0L) return
-                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
+                val point = nativeUpdatePoint()
+                update(handle, width, height, point.x, point.y)
             }
         })
+    }
+
+    private fun nativeUpdatePoint(): Point {
+        if (jvmTarget != JvmTarget.MACOS) {
+            return locationOnScreen
+        }
+
+        val window = SwingUtilities.getWindowAncestor(this) as? Window ?: return bounds.location
+        val insets = window.insets
+        val point = SwingUtilities.convertPoint(this, 0, 0, window)
+        point.translate(-insets.left, -insets.top)
+        return point
     }
 
     override fun paint(g: Graphics?) {
@@ -187,7 +202,8 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
                 }
             }
             SwingUtilities.invokeLater {
-                update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
+                val point = nativeUpdatePoint()
+                update(handle, width, height, point.x, point.y)
                 if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
                     requestFocus0(handle)
                 }
