@@ -52,8 +52,8 @@ fun Project.library(
 //            minSdk = 28
 //        }
 
-//        iosArm64()
-//        iosSimulatorArm64()
+        iosArm64()
+        iosSimulatorArm64()
 //        wasmJs { browser() }
 //        js { browser() }
 

@@ -1,6 +1,7 @@
 package top.kagg886.wvbridge.internal
 
 import java.awt.Canvas
+import java.awt.Color
 import java.awt.Graphics
 import java.awt.event.*
 import java.io.File
@@ -9,12 +10,30 @@ import java.util.function.Consumer
 import javax.swing.SwingUtilities
 
 /**
- * ================================================
- * Author:     886kagg
- * Created on: 2026/2/11 09:44
- * ================================================
+ * WebView 页面加载生命周期说明：
+ * - `onPageLoadingStart(url)`
+ * - `onPageLoadingProgress(progress)`
+ * - `onPageLoadingEnd(success)`
+ *
+ * ```text
+ * [一次页面加载周期]
+ *
+ * (可能先到达) onPageLoadingProgress(0.1)
+ *              |
+ *              v
+ *      onPageLoadingStart(url)
+ *              |
+ *              v
+ * onPageLoadingProgress(p1) -> onPageLoadingProgress(p2) -> ... -> onPageLoadingProgress(1.0)
+ *              |
+ *              v
+ *      onPageLoadingEnd(true/false)
+ *
+ * 结论：
+ * - `onPageLoadingProgress` 可能先于 `onPageLoadingStart`。
+ * - 一次用户操作（如点击）可能触发多个“start -> progress* -> end”完整周期（跳转 + 重定向）。
  */
-internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
+public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
 
     init {
@@ -56,7 +75,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     override fun paint(g: Graphics?) {
         super.paint(g)
         if (g == null) return
-        g.color = java.awt.Color.GRAY
+        g.color = Color.GRAY
         g.drawRect(0, 0, width - 1, height - 1)
     }
 
@@ -67,56 +86,56 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private val canGoBackChangeListener = mutableSetOf<Consumer<Boolean>>()
     private val canGoForwardChangeListener = mutableSetOf<Consumer<Boolean>>()
 
-    fun addPageLoadingStartListener(handle: Consumer<String>) = check(pageLoadingStartListener.add(handle)) {
+    public fun addPageLoadingStartListener(handle: Consumer<String>): Unit = check(pageLoadingStartListener.add(handle)) {
         "Page loading start listener: [$handle] already added"
     }
 
-    fun removePageLoadingStartListener(handle: Consumer<String>) = check(pageLoadingStartListener.remove(handle)) {
+    public fun removePageLoadingStartListener(handle: Consumer<String>): Unit = check(pageLoadingStartListener.remove(handle)) {
         "Page loading start listener: [$handle] not yet exists"
     }
 
-    fun addPageLoadingProgressListener(handle: Consumer<Float>) = check(pageLoadingProgressListener.add(handle)) {
+    public fun addPageLoadingProgressListener(handle: Consumer<Float>): Unit = check(pageLoadingProgressListener.add(handle)) {
         "Page loading progress listener: [$handle] already added"
     }
 
-    fun removePageLoadingProgressListener(handle: Consumer<Float>) = check(pageLoadingProgressListener.remove(handle)) {
+    public fun removePageLoadingProgressListener(handle: Consumer<Float>): Unit = check(pageLoadingProgressListener.remove(handle)) {
         "Page loading progress listener: [$handle] not yet exists"
     }
 
-    fun addPageLoadingEndListener(handle: Consumer<Boolean>) = check(pageLoadingEndListener.add(handle)) {
+    public fun addPageLoadingEndListener(handle: Consumer<Boolean>): Unit = check(pageLoadingEndListener.add(handle)) {
         "Page loading end listener: [$handle] already added"
     }
 
-    fun removePageLoadingEndListener(handle: Consumer<Boolean>) = check(pageLoadingEndListener.remove(handle)) {
+    public fun removePageLoadingEndListener(handle: Consumer<Boolean>): Unit = check(pageLoadingEndListener.remove(handle)) {
         "Page loading end listener: [$handle] not yet exists"
     }
 
-    fun addURLChangeListener(handle: Consumer<String>) = check(urlChangeListener.add(handle)) {
+    public fun addURLChangeListener(handle: Consumer<String>): Unit = check(urlChangeListener.add(handle)) {
         "URL change listener: [$handle] already added"
     }
 
-    fun removeURLChangeListener(handle: Consumer<String>) = check(urlChangeListener.remove(handle)) {
+    public fun removeURLChangeListener(handle: Consumer<String>): Unit = check(urlChangeListener.remove(handle)) {
         "URL change listener: [$handle] not yet exists"
     }
 
-    fun addCanGoBackChangeListener(handle: Consumer<Boolean>) = check(canGoBackChangeListener.add(handle)) {
+    public fun addCanGoBackChangeListener(handle: Consumer<Boolean>): Unit = check(canGoBackChangeListener.add(handle)) {
         "canGoBack change listener: [$handle] already added"
     }
 
-    fun removeCanGoBackChangeListener(handle: Consumer<Boolean>) = check(canGoBackChangeListener.remove(handle)) {
+    public fun removeCanGoBackChangeListener(handle: Consumer<Boolean>): Unit = check(canGoBackChangeListener.remove(handle)) {
         "canGoBack change listener: [$handle] not yet exists"
     }
 
-    fun addCanGoForwardChangeListener(handle: Consumer<Boolean>) = check(canGoForwardChangeListener.add(handle)) {
+    public fun addCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit = check(canGoForwardChangeListener.add(handle)) {
         "canGoForward change listener: [$handle] already added"
     }
 
-    fun removeCanGoForwardChangeListener(handle: Consumer<Boolean>) = check(canGoForwardChangeListener.remove(handle)) {
+    public fun removeCanGoForwardChangeListener(handle: Consumer<Boolean>): Unit = check(canGoForwardChangeListener.remove(handle)) {
         "canGoForward change listener: [$handle] not yet exists"
     }
 
-    fun addProgressListener(consumer: Consumer<Float>) = addPageLoadingProgressListener(consumer)
-    fun removeProgressListener(consumer: Consumer<Float>) = removePageLoadingProgressListener(consumer)
+    public fun addProgressListener(consumer: Consumer<Float>): Unit = addPageLoadingProgressListener(consumer)
+    public fun removeProgressListener(consumer: Consumer<Float>): Unit = removePageLoadingProgressListener(consumer)
 
     override fun removeNotify() {
         super.removeNotify()
@@ -171,12 +190,12 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         }
     }
 
-    fun loadUrl(url: String) = loadUrl(handle, url)
-    fun refresh() = refresh(handle)
-    fun goBack() = goBack(handle)
-    fun goForward() = goForward(handle)
+    public fun loadUrl(url: String): Unit = loadUrl(handle, url)
+    public fun refresh(): Unit = refresh(handle)
+    public fun goBack(): Boolean = goBack(handle)
+    public fun goForward(): Boolean = goForward(handle)
 
-    override fun close() = close0(handle).apply {
+    override fun close(): Unit = close0(handle).apply {
         handle = 0
     }
 
@@ -200,7 +219,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
 
 
     @Suppress("UnsafeDynamicallyLoadedCode")
-    companion object {
+    internal companion object {
         init {
             val name = when (jvmTarget) {
                 JvmTarget.MACOS, JvmTarget.LINUX -> "libwvbridge"
