@@ -1,12 +1,13 @@
+#pragma once
+
 #import <Foundation/Foundation.h>
 #import <WebKit/WebKit.h>
-#import <jni.h>
+
+#include <jni.h>
 
 @interface URLChangeObserver : NSObject
 
-- (instancetype)initWithJVM:(JavaVM *)jvm
-                   listener:(jobject)listener
-                   methodID:(jmethodID)methodID
-                  useAccept:(BOOL)useAccept;
+- (instancetype)initWithJVM:(JavaVM *)jvm;
+- (void)updateListener:(JNIEnv *)env listener:(jobject)listener;
 
 @end

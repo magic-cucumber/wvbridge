@@ -4,142 +4,29 @@
 #include <jawt.h>
 #include <jawt_md.h>
 
-#include <WebView2.h>
-#include <wrl.h>
-
 #include <atomic>
-#include <cwchar>
 #include <filesystem>
 #include <future>
 #include <iomanip>
 #include <memory>
-#include <mutex>
-#include <new>
 #include <sstream>
 #include <string>
 #include <system_error>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "history_events.h"
+#include "java_listener.h"
+#include "page_loading_events.h"
 #include "thread.h"
+#include "url_events.h"
 #include "utils.h"
+#include "webview2_callback.h"
+#include "webview_context.h"
 
 using Microsoft::WRL::ComPtr;
 
-struct JavaListenerState {
-    std::mutex mutex;
-    jobject global = nullptr;
-    jmethodID mid = nullptr;
-    bool use_accept = true;
-};
-
-struct WebViewContext {
-    JavaVM *jvm = nullptr;
-    HWND parent_hwnd = nullptr;
-    HWND child_hwnd = nullptr;
-
-    WebView2Thread *thread = nullptr;
-    std::atomic_bool closing{false};
-
-    ComPtr<ICoreWebView2Environment> env;
-    ComPtr<ICoreWebView2Controller> controller;
-    ComPtr<ICoreWebView2> webview;
-
-    EventRegistrationToken token_source_changed{};
-    EventRegistrationToken token_nav_starting{};
-    EventRegistrationToken token_nav_completed{};
-    EventRegistrationToken token_new_window_requested{};
-    bool source_changed_registered = false;
-    bool nav_starting_registered = false;
-    bool nav_completed_registered = false;
-    bool new_window_requested_registered = false;
-
-    JavaListenerState url_listener;
-    JavaListenerState progress_listener;
-};
-
 namespace {
-
-template<typename Interface>
-const IID &webview2_handler_iid();
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>() {
-    return IID_ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler;
-}
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>() {
-    return IID_ICoreWebView2CreateCoreWebView2ControllerCompletedHandler;
-}
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2SourceChangedEventHandler>() {
-    return IID_ICoreWebView2SourceChangedEventHandler;
-}
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2NavigationStartingEventHandler>() {
-    return IID_ICoreWebView2NavigationStartingEventHandler;
-}
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2NavigationCompletedEventHandler>() {
-    return IID_ICoreWebView2NavigationCompletedEventHandler;
-}
-
-template<>
-const IID &webview2_handler_iid<ICoreWebView2NewWindowRequestedEventHandler>() {
-    return IID_ICoreWebView2NewWindowRequestedEventHandler;
-}
-
-template<typename Interface, typename Fn, typename Signature>
-class LambdaComCallbackImpl;
-
-template<typename Interface, typename Fn, typename Ret, typename... Args>
-class LambdaComCallbackImpl<Interface, Fn, Ret(STDMETHODCALLTYPE Interface::*)(Args...)> final : public Interface {
-public:
-    explicit LambdaComCallbackImpl(Fn fn) : fn_(std::move(fn)) {}
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) override {
-        if (!ppvObject) return E_POINTER;
-        *ppvObject = nullptr;
-        if (riid == IID_IUnknown || riid == webview2_handler_iid<Interface>()) {
-            *ppvObject = static_cast<Interface *>(this);
-            AddRef();
-            return S_OK;
-        }
-        return E_NOINTERFACE;
-    }
-
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return static_cast<ULONG>(ref_count_.fetch_add(1, std::memory_order_relaxed) + 1);
-    }
-
-    ULONG STDMETHODCALLTYPE Release() override {
-        ULONG count = static_cast<ULONG>(ref_count_.fetch_sub(1, std::memory_order_acq_rel) - 1);
-        if (count == 0) delete this;
-        return count;
-    }
-
-    Ret STDMETHODCALLTYPE Invoke(Args... args) override {
-        return fn_(args...);
-    }
-
-private:
-    std::atomic_ulong ref_count_{1};
-    Fn fn_;
-};
-
-template<typename Interface, typename Fn>
-ComPtr<Interface> Callback(Fn &&fn) {
-    using FnType = std::decay_t<Fn>;
-    using Impl = LambdaComCallbackImpl<Interface, FnType, decltype(&Interface::Invoke)>;
-    ComPtr<Interface> callback;
-    callback.Attach(new (std::nothrow) Impl(FnType(std::forward<Fn>(fn))));
-    return callback;
-}
 
 struct InitState {
     std::promise<HRESULT> promise;
@@ -374,193 +261,6 @@ std::string build_init_error(
     return oss.str();
 }
 
-JNIEnv *attach_env(JavaVM *jvm, bool *did_attach) {
-    if (did_attach) *did_attach = false;
-    if (!jvm) return nullptr;
-
-    JNIEnv *env = nullptr;
-    jint r = jvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-    if (r == JNI_OK) return env;
-    if (r == JNI_EDETACHED) {
-        if (jvm->AttachCurrentThread(reinterpret_cast<void **>(&env), nullptr) != JNI_OK) {
-            return nullptr;
-        }
-        if (did_attach) *did_attach = true;
-        return env;
-    }
-    return nullptr;
-}
-
-void detach_env(JavaVM *jvm, bool did_attach) {
-    if (jvm && did_attach) {
-        jvm->DetachCurrentThread();
-    }
-}
-
-void replace_listener(JNIEnv *env, JavaListenerState &state, jobject listener) {
-    std::lock_guard<std::mutex> lk(state.mutex);
-
-    if (state.global) {
-        env->DeleteGlobalRef(state.global);
-        state.global = nullptr;
-        state.mid = nullptr;
-    }
-
-    if (!listener) return;
-
-    jobject global = env->NewGlobalRef(listener);
-    if (!global) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        return;
-    }
-
-    jclass cls = env->GetObjectClass(listener);
-    if (!cls) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        env->DeleteGlobalRef(global);
-        return;
-    }
-
-    jmethodID mid = env->GetMethodID(cls, "accept", "(Ljava/lang/Object;)V");
-    bool use_accept = true;
-    if (!mid) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        mid = env->GetMethodID(cls, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
-        use_accept = false;
-    }
-    env->DeleteLocalRef(cls);
-
-    if (!mid) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        env->DeleteGlobalRef(global);
-        return;
-    }
-
-    state.global = global;
-    state.mid = mid;
-    state.use_accept = use_accept;
-}
-
-void clear_listener(JNIEnv *env, JavaListenerState &state) {
-    std::lock_guard<std::mutex> lk(state.mutex);
-    if (state.global) {
-        env->DeleteGlobalRef(state.global);
-        state.global = nullptr;
-        state.mid = nullptr;
-    }
-}
-
-void invoke_listener_with_object(JNIEnv *env, JavaListenerState &state, jobject arg) {
-    if (!env || !arg) return;
-    jobject callback = nullptr;
-    jmethodID mid = nullptr;
-    bool use_accept = true;
-    {
-        std::lock_guard<std::mutex> lk(state.mutex);
-        if (state.global && state.mid) {
-            callback = env->NewGlobalRef(state.global);
-            mid = state.mid;
-            use_accept = state.use_accept;
-        }
-    }
-
-    if (callback && mid) {
-        if (use_accept) {
-            env->CallVoidMethod(callback, mid, arg);
-        } else {
-            jobject ret = env->CallObjectMethod(callback, mid, arg);
-            if (ret) env->DeleteLocalRef(ret);
-        }
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        env->DeleteGlobalRef(callback);
-    }
-}
-
-void notify_url(WebViewContext *ctx, LPCWSTR source) {
-    if (!ctx || !source) return;
-    if (ctx->closing.load(std::memory_order_acquire)) return;
-
-    bool did_attach = false;
-    JNIEnv *env = attach_env(ctx->jvm, &did_attach);
-    if (!env) {
-        detach_env(ctx->jvm, did_attach);
-        return;
-    }
-
-    const jchar *chars = reinterpret_cast<const jchar *>(source);
-    jsize len = static_cast<jsize>(wcslen(source));
-    jstring jurl = env->NewString(chars, len);
-    if (jurl) {
-        invoke_listener_with_object(env, ctx->url_listener, jurl);
-        env->DeleteLocalRef(jurl);
-    } else if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-    }
-
-    detach_env(ctx->jvm, did_attach);
-}
-
-void notify_progress(WebViewContext *ctx, float progress) {
-    if (!ctx) return;
-    if (ctx->closing.load(std::memory_order_acquire)) return;
-
-    bool did_attach = false;
-    JNIEnv *env = attach_env(ctx->jvm, &did_attach);
-    if (!env) {
-        detach_env(ctx->jvm, did_attach);
-        return;
-    }
-
-    jclass float_cls = env->FindClass("java/lang/Float");
-    if (!float_cls) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        detach_env(ctx->jvm, did_attach);
-        return;
-    }
-
-    jmethodID value_of = env->GetStaticMethodID(float_cls, "valueOf", "(F)Ljava/lang/Float;");
-    if (!value_of) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        env->DeleteLocalRef(float_cls);
-        detach_env(ctx->jvm, did_attach);
-        return;
-    }
-
-    jobject boxed = env->CallStaticObjectMethod(float_cls, value_of, progress);
-    env->DeleteLocalRef(float_cls);
-    if (!boxed || env->ExceptionCheck()) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        detach_env(ctx->jvm, did_attach);
-        return;
-    }
-
-    invoke_listener_with_object(env, ctx->progress_listener, boxed);
-    env->DeleteLocalRef(boxed);
-
-    detach_env(ctx->jvm, did_attach);
-}
-
-void unregister_events(WebViewContext *ctx) {
-    if (!ctx || !ctx->webview) return;
-
-    if (ctx->source_changed_registered) {
-        ctx->webview->remove_SourceChanged(ctx->token_source_changed);
-        ctx->source_changed_registered = false;
-    }
-    if (ctx->nav_starting_registered) {
-        ctx->webview->remove_NavigationStarting(ctx->token_nav_starting);
-        ctx->nav_starting_registered = false;
-    }
-    if (ctx->nav_completed_registered) {
-        ctx->webview->remove_NavigationCompleted(ctx->token_nav_completed);
-        ctx->nav_completed_registered = false;
-    }
-    if (ctx->new_window_requested_registered) {
-        ctx->webview->remove_NewWindowRequested(ctx->token_new_window_requested);
-        ctx->new_window_requested_registered = false;
-    }
-}
-
 void destroy_ctx(JNIEnv *env, WebViewContext *ctx) {
     if (!ctx) return;
 
@@ -568,7 +268,14 @@ void destroy_ctx(JNIEnv *env, WebViewContext *ctx) {
 
     if (ctx->thread) {
         webview2_thread_run_sync(ctx->thread, [ctx] {
-            unregister_events(ctx);
+            unregister_url_events(ctx);
+            unregister_page_loading_events(ctx);
+            unregister_history_events(ctx);
+
+            if (ctx->new_window_requested_registered) {
+                ctx->webview->remove_NewWindowRequested(ctx->token_new_window_requested);
+                ctx->new_window_requested_registered = false;
+            }
 
             if (ctx->controller) {
                 ctx->controller->Close();
@@ -585,7 +292,11 @@ void destroy_ctx(JNIEnv *env, WebViewContext *ctx) {
     }
 
     clear_listener(env, ctx->url_listener);
-    clear_listener(env, ctx->progress_listener);
+    clear_listener(env, ctx->page_loading_start_listener);
+    clear_listener(env, ctx->page_loading_progress_listener);
+    clear_listener(env, ctx->page_loading_end_listener);
+    clear_listener(env, ctx->can_go_back_change_listener);
+    clear_listener(env, ctx->can_go_forward_change_listener);
 
     if (ctx->thread) {
         webview2_thread_destroy(ctx->thread);
@@ -799,43 +510,9 @@ API_EXPORT(jlong, initAndAttach) {
                                     settings->put_IsWebMessageEnabled(TRUE);
                                 }
 
-                                ctx->webview->add_SourceChanged(
-                                    Callback<ICoreWebView2SourceChangedEventHandler>(
-                                        [ctx](ICoreWebView2 *sender, ICoreWebView2SourceChangedEventArgs *) -> HRESULT {
-                                            if (!ctx || ctx->closing.load(std::memory_order_acquire) || !sender) return S_OK;
-                                            LPWSTR source = nullptr;
-                                            if (SUCCEEDED(sender->get_Source(&source)) && source) {
-                                                notify_url(ctx, source);
-                                                CoTaskMemFree(source);
-                                            }
-                                            return S_OK;
-                                        }
-                                    ).Get(),
-                                    &ctx->token_source_changed
-                                );
-                                ctx->source_changed_registered = true;
-
-                                ctx->webview->add_NavigationStarting(
-                                    Callback<ICoreWebView2NavigationStartingEventHandler>(
-                                        [ctx](ICoreWebView2 *, ICoreWebView2NavigationStartingEventArgs *) -> HRESULT {
-                                            notify_progress(ctx, 0.0f);
-                                            return S_OK;
-                                        }
-                                    ).Get(),
-                                    &ctx->token_nav_starting
-                                );
-                                ctx->nav_starting_registered = true;
-
-                                ctx->webview->add_NavigationCompleted(
-                                    Callback<ICoreWebView2NavigationCompletedEventHandler>(
-                                        [ctx](ICoreWebView2 *, ICoreWebView2NavigationCompletedEventArgs *) -> HRESULT {
-                                            notify_progress(ctx, 1.0f);
-                                            return S_OK;
-                                        }
-                                    ).Get(),
-                                    &ctx->token_nav_completed
-                                );
-                                ctx->nav_completed_registered = true;
+                                register_url_events(ctx);
+                                register_page_loading_events(ctx);
+                                register_history_events(ctx);
 
                                 ctx->webview->add_NewWindowRequested(
                                     Callback<ICoreWebView2NewWindowRequestedEventHandler>(
@@ -1014,68 +691,6 @@ API_EXPORT(void, refresh, jlong handle) {
     }
 }
 
-API_EXPORT(jboolean, canGoBack, jlong handle) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return JNI_FALSE;
-    }
-
-    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
-    if (!ctx || !ctx->thread) return JNI_FALSE;
-
-    BOOL can = FALSE;
-    bool ok = true;
-    std::string error;
-    webview2_thread_run_sync(ctx->thread, [ctx, &can, &ok, &error] {
-        if (!ctx || ctx->closing.load(std::memory_order_acquire) || !ctx->webview) {
-            ok = false;
-            error = "webview is not available";
-            return;
-        }
-        HRESULT hr = ctx->webview->get_CanGoBack(&can);
-        if (FAILED(hr)) {
-            ok = false;
-            error = "ICoreWebView2::get_CanGoBack failed (HRESULT=" + format_hresult(hr) + ")";
-        }
-    });
-    if (!ok) {
-        throw_jni_exception(env, "java/lang/RuntimeException", error.c_str());
-        return JNI_FALSE;
-    }
-    return can ? JNI_TRUE : JNI_FALSE;
-}
-
-API_EXPORT(jboolean, canGoForward, jlong handle) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return JNI_FALSE;
-    }
-
-    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
-    if (!ctx || !ctx->thread) return JNI_FALSE;
-
-    BOOL can = FALSE;
-    bool ok = true;
-    std::string error;
-    webview2_thread_run_sync(ctx->thread, [ctx, &can, &ok, &error] {
-        if (!ctx || ctx->closing.load(std::memory_order_acquire) || !ctx->webview) {
-            ok = false;
-            error = "webview is not available";
-            return;
-        }
-        HRESULT hr = ctx->webview->get_CanGoForward(&can);
-        if (FAILED(hr)) {
-            ok = false;
-            error = "ICoreWebView2::get_CanGoForward failed (HRESULT=" + format_hresult(hr) + ")";
-        }
-    });
-    if (!ok) {
-        throw_jni_exception(env, "java/lang/RuntimeException", error.c_str());
-        return JNI_FALSE;
-    }
-    return can ? JNI_TRUE : JNI_FALSE;
-}
-
 API_EXPORT(jboolean, goBack, jlong handle) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
@@ -1188,14 +803,34 @@ API_EXPORT(jboolean, goForward, jlong handle) {
     return can_go_forward_after ? JNI_TRUE : JNI_FALSE;
 }
 
-API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
+API_EXPORT(void, setPageLoadingStartListener, jlong handle, jobject listener) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
     }
     auto *ctx = reinterpret_cast<WebViewContext *>(handle);
     if (!ctx) return;
-    replace_listener(env, ctx->progress_listener, listener);
+    replace_listener(env, ctx->page_loading_start_listener, listener);
+}
+
+API_EXPORT(void, setPageLoadingProgressListener, jlong handle, jobject listener) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
+    if (!ctx) return;
+    replace_listener(env, ctx->page_loading_progress_listener, listener);
+}
+
+API_EXPORT(void, setPageLoadingEndListener, jlong handle, jobject listener) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
+    if (!ctx) return;
+    replace_listener(env, ctx->page_loading_end_listener, listener);
 }
 
 API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
@@ -1206,4 +841,34 @@ API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     auto *ctx = reinterpret_cast<WebViewContext *>(handle);
     if (!ctx) return;
     replace_listener(env, ctx->url_listener, handler);
+}
+
+API_EXPORT(void, setCanGoBackChangeListener, jlong handle, jobject handler) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
+    if (!ctx) return;
+    replace_listener(env, ctx->can_go_back_change_listener, handler);
+    if (ctx->thread) {
+        webview2_thread_run_sync(ctx->thread, [ctx] {
+            emit_history_change_events(ctx);
+        });
+    }
+}
+
+API_EXPORT(void, setCanGoForwardChangeListener, jlong handle, jobject handler) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = reinterpret_cast<WebViewContext *>(handle);
+    if (!ctx) return;
+    replace_listener(env, ctx->can_go_forward_change_listener, handler);
+    if (ctx->thread) {
+        webview2_thread_run_sync(ctx->thread, [ctx] {
+            emit_history_change_events(ctx);
+        });
+    }
 }

@@ -44,16 +44,19 @@ pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
 
 set(SOURCES
         src/libs.cpp
+        src/java_listener.cpp
         src/utils.h
         src/utils.cpp
         src/gtk.h
         src/gtk.cpp
+        src/history_listener.h
+        src/history_listener.cpp
+        src/page_loading.h
+        src/page_loading.cpp
         src/url_listener.h
         src/url_listener.cpp
         src/navigation.h
         src/navigation.cpp
-        src/progress.h
-        src/progress.cpp
 )
 
 # 创建共享库

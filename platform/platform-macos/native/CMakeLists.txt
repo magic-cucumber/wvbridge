@@ -34,9 +34,11 @@ set(JNI_LIBRARIES
 
 # 源文件
 set(SOURCES
+        src/history_listener.mm
+        src/java_callback.mm
         src/libs.mm
+        src/page_loading.mm
         src/utils.mm
-        src/progress.mm
         src/url_listener.mm
         src/ui_delegate.mm
 )

@@ -10,8 +10,9 @@
 #include <algorithm>
 #include <cstdint>
 
+#import "history_listener.h"
+#import "page_loading.h"
 #import "utils.h"
-#import "progress.h"
 #import "url_listener.h"
 #import "ui_delegate.h"
 
@@ -20,7 +21,8 @@ struct WebViewContext {
     NSWindow *hostWindow = nil;
     NSView *hostView = nil;
     CALayer *rootLayer = nil;
-    ProgressObserver *progressObserver = nil;
+    PageLoadingObserver *pageLoadingObserver = nil;
+    HistoryChangeObserver *historyChangeObserver = nil;
     URLChangeObserver *urlChangeObserver = nil;
 };
 
@@ -53,6 +55,13 @@ API_EXPORT(jlong, initAndAttach) {
         awt.FreeDrawingSurface(ds);
         return 0;
     }
+    JavaVM *jvm = nil;
+    if (env->GetJavaVM(&jvm) != JNI_OK) {
+        ds->FreeDrawingSurfaceInfo(dsi);
+        ds->Unlock(ds);
+        awt.FreeDrawingSurface(ds);
+        return 0;
+    }
     WebViewContext *ctx = new WebViewContext();
 
     runOnMainSync(^{
@@ -67,6 +76,26 @@ API_EXPORT(jlong, initAndAttach) {
         wv.customUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15";
         wv.hidden = NO;
         wv.UIDelegate = [[AllowAllUIDelegate alloc] init];
+        ctx->pageLoadingObserver = [[PageLoadingObserver alloc] initWithJVM:jvm];
+        ctx->historyChangeObserver = [[HistoryChangeObserver alloc] initWithJVM:jvm];
+        ctx->urlChangeObserver = [[URLChangeObserver alloc] initWithJVM:jvm];
+        wv.navigationDelegate = ctx->pageLoadingObserver;
+        [wv addObserver:ctx->pageLoadingObserver
+             forKeyPath:@"estimatedProgress"
+                options:NSKeyValueObservingOptionNew
+                context:nil];
+        [wv addObserver:ctx->urlChangeObserver
+             forKeyPath:@"URL"
+                options:NSKeyValueObservingOptionNew
+                context:nil];
+        [wv addObserver:ctx->historyChangeObserver
+             forKeyPath:@"canGoBack"
+                options:NSKeyValueObservingOptionNew
+                context:nil];
+        [wv addObserver:ctx->historyChangeObserver
+             forKeyPath:@"canGoForward"
+                options:NSKeyValueObservingOptionNew
+                context:nil];
 
         ctx->webView = wv;
 
@@ -222,14 +251,18 @@ API_EXPORT(void, close0, jlong handle) {
         if (ctx->webView) {
             if (ctx->urlChangeObserver != nil) {
                 [ctx->webView removeObserver:ctx->urlChangeObserver forKeyPath:@"URL"];
-                [ctx->urlChangeObserver release];
-                ctx->urlChangeObserver = nil;
+            }
+            if (ctx->pageLoadingObserver != nil) {
+                [ctx->webView removeObserver:ctx->pageLoadingObserver forKeyPath:@"estimatedProgress"];
+            }
+            if (ctx->historyChangeObserver != nil) {
+                [ctx->webView removeObserver:ctx->historyChangeObserver forKeyPath:@"canGoBack"];
+                [ctx->webView removeObserver:ctx->historyChangeObserver forKeyPath:@"canGoForward"];
             }
 
             [ctx->webView.UIDelegate release];
             ctx->webView.UIDelegate = nil;
-
-            [ctx->webView removeObserver:ctx->progressObserver forKeyPath:@"estimatedProgress"];
+            ctx->webView.navigationDelegate = nil;
             [ctx->webView removeFromSuperview];
             ctx->webView = nil;
         }
@@ -238,8 +271,12 @@ API_EXPORT(void, close0, jlong handle) {
         ctx->hostWindow = nil;
         ctx->rootLayer = nil;
 
-        [ctx->progressObserver release];
-        ctx->progressObserver = nil;
+        [ctx->pageLoadingObserver release];
+        ctx->pageLoadingObserver = nil;
+        [ctx->historyChangeObserver release];
+        ctx->historyChangeObserver = nil;
+        [ctx->urlChangeObserver release];
+        ctx->urlChangeObserver = nil;
     });
 
     delete ctx;
@@ -295,54 +332,6 @@ API_EXPORT(void, refresh, jlong handle) {
     if (!ok) {
         throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
     }
-}
-
-API_EXPORT(jboolean, canGoBack, jlong handle) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return JNI_FALSE;
-    }
-    auto *ctx = (WebViewContext *) (uintptr_t) handle;
-    if (!ctx) return JNI_FALSE;
-
-    __block BOOL can_go_back = NO;
-    __block bool ok = true;
-    runOnMainSync(^{
-        if (!ctx || !ctx->webView) {
-            ok = false;
-            return;
-        }
-        can_go_back = [ctx->webView canGoBack];
-    });
-    if (!ok) {
-        throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
-        return JNI_FALSE;
-    }
-    return can_go_back ? JNI_TRUE : JNI_FALSE;
-}
-
-API_EXPORT(jboolean, canGoForward, jlong handle) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return JNI_FALSE;
-    }
-    auto *ctx = (WebViewContext *) (uintptr_t) handle;
-    if (!ctx) return JNI_FALSE;
-
-    __block BOOL can_go_forward = NO;
-    __block bool ok = true;
-    runOnMainSync(^{
-        if (!ctx || !ctx->webView) {
-            ok = false;
-            return;
-        }
-        can_go_forward = [ctx->webView canGoForward];
-    });
-    if (!ok) {
-        throw_jni_exception(env, "java/lang/RuntimeException", "webview is not available");
-        return JNI_FALSE;
-    }
-    return can_go_forward ? JNI_TRUE : JNI_FALSE;
 }
 
 API_EXPORT(jboolean, goBack, jlong handle) {
@@ -411,45 +400,36 @@ API_EXPORT(jboolean, goForward, jlong handle) {
     return can_go_forward_after ? JNI_TRUE : JNI_FALSE;
 }
 
-//private external fun setProgressListener(webview: Long, consumer: Consumer<Float>)
-API_EXPORT(void, setProgressListener, jlong handle, jobject listener) {
+API_EXPORT(void, setPageLoadingStartListener, jlong handle, jobject listener) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
     }
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
-
-    if (ctx->progressObserver != nil) {
-        [ctx->webView removeObserver:ctx->progressObserver forKeyPath:@"estimatedProgress"];
-        [ctx->progressObserver release];
-        ctx->progressObserver = nil;
-    }
-
-    if (listener == nullptr) return;
-
-    JavaVM *jvm = nil;
-    if (env->GetJavaVM(&jvm) != JNI_OK) return;
-
-    jclass listenerClass = env->GetObjectClass(listener);
-    jmethodID acceptMID = env->GetMethodID(listenerClass,
-                                           "accept",
-                                           "(Ljava/lang/Object;)V");
-    env->DeleteLocalRef(listenerClass);
-
-    ProgressObserver *observer = [[ProgressObserver alloc] initWithJVM:jvm
-                                                              listener:env->NewGlobalRef(listener)
-                                                              methodID:acceptMID];
-
-    [ctx->webView addObserver:observer
-                   forKeyPath:@"estimatedProgress"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
-
-    ctx->progressObserver = observer;
+    [ctx->pageLoadingObserver updateStartListener:env listener:listener];
 }
 
-//private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
+API_EXPORT(void, setPageLoadingProgressListener, jlong handle, jobject listener) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return;
+    [ctx->pageLoadingObserver updateProgressListener:env listener:listener];
+}
+
+API_EXPORT(void, setPageLoadingEndListener, jlong handle, jobject listener) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return;
+    [ctx->pageLoadingObserver updateEndListener:env listener:listener];
+}
+
 API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     if (handle == 0) {
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
@@ -457,46 +437,33 @@ API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
     }
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
+    [ctx->urlChangeObserver updateListener:env listener:handler];
+}
 
-    if (ctx->urlChangeObserver != nil) {
-        [ctx->webView removeObserver:ctx->urlChangeObserver forKeyPath:@"URL"];
-        [ctx->urlChangeObserver release];
-        ctx->urlChangeObserver = nil;
-    }
-
-    if (handler == nullptr) return;
-
-    JavaVM *jvm = nil;
-    if (env->GetJavaVM(&jvm) != JNI_OK) return;
-
-    jclass handlerClass = env->GetObjectClass(handler);
-    jmethodID callMID = env->GetMethodID(handlerClass,
-                                         "accept",
-                                         "(Ljava/lang/Object;)V");
-    bool useAccept = true;
-    if (callMID == nullptr) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
-        callMID = env->GetMethodID(handlerClass,
-                                   "invoke",
-                                   "(Ljava/lang/Object;)Ljava/lang/Object;");
-        useAccept = false;
-    }
-    env->DeleteLocalRef(handlerClass);
-
-    if (callMID == nullptr) {
-        if (env->ExceptionCheck()) env->ExceptionClear();
+API_EXPORT(void, setCanGoBackChangeListener, jlong handle, jobject handler) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
     }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return;
 
-    URLChangeObserver *observer = [[URLChangeObserver alloc] initWithJVM:jvm
-                                                                listener:env->NewGlobalRef(handler)
-                                                                methodID:callMID
-                                                               useAccept:useAccept];
+    [ctx->historyChangeObserver updateCanGoBackListener:env listener:handler];
+    runOnMainSync(^{
+        [ctx->historyChangeObserver emitCurrentState:ctx->webView];
+    });
+}
 
-    [ctx->webView addObserver:observer
-                   forKeyPath:@"URL"
-                      options:NSKeyValueObservingOptionNew
-                      context:nil];
+API_EXPORT(void, setCanGoForwardChangeListener, jlong handle, jobject handler) {
+    if (handle == 0) {
+        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
+        return;
+    }
+    auto *ctx = (WebViewContext *) (uintptr_t) handle;
+    if (!ctx) return;
 
-    ctx->urlChangeObserver = observer;
+    [ctx->historyChangeObserver updateCanGoForwardListener:env listener:handler];
+    runOnMainSync(^{
+        [ctx->historyChangeObserver emitCurrentState:ctx->webView];
+    });
 }

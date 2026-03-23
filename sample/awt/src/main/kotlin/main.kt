@@ -36,19 +36,33 @@ private class BrowserPane(
     }
 
     private var isWebViewPresent = true
+    private var canGoBack = false
+    private var canGoForward = false
 
     init {
         border = BorderFactory.createTitledBorder(title)
 
-        webView.addProgressListener(::println)
+        webView.addPageLoadingProgressListener(::println)
         webView.addURLChangeListener {
             println("[$title] $it")
         }
-        webView.addProgressListener { progress ->
+        webView.addPageLoadingStartListener {
+            SwingUtilities.invokeLater {
+                progressBar.value = 0
+                progressBar.isVisible = true
+            }
+        }
+        webView.addPageLoadingProgressListener { progress ->
             SwingUtilities.invokeLater {
                 val p = progress.coerceIn(0f, 1f)
                 progressBar.value = (p * 100).toInt().coerceIn(0, 100)
                 progressBar.isVisible = p > 0f && p < 1f
+            }
+        }
+        webView.addPageLoadingEndListener {
+            SwingUtilities.invokeLater {
+                progressBar.value = if (it) 100 else progressBar.value
+                progressBar.isVisible = false
             }
         }
         webView.addURLChangeListener {
@@ -56,6 +70,14 @@ private class BrowserPane(
                 urlField.text = it
                 updateNavButtons()
             }
+        }
+        webView.addCanGoBackChangeListener {
+            canGoBack = it
+            SwingUtilities.invokeLater(::updateNavButtons)
+        }
+        webView.addCanGoForwardChangeListener {
+            canGoForward = it
+            SwingUtilities.invokeLater(::updateNavButtons)
         }
 
         urlField.addActionListener {
@@ -141,8 +163,8 @@ private class BrowserPane(
     }
 
     private fun updateNavButtons() {
-        backButton.isEnabled = runCatching { webView.canGoBack() }.getOrDefault(false)
-        forwardButton.isEnabled = runCatching { webView.canGoForward() }.getOrDefault(false)
+        backButton.isEnabled = canGoBack
+        forwardButton.isEnabled = canGoForward
     }
 
     private fun runNavigation(action: () -> Boolean) {
