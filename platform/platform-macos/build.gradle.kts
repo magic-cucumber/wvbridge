@@ -32,7 +32,7 @@ val processBuild = tasks.register<Exec>("processBuild") {
 
 // Configure JVM processResources task
 tasks.named<ProcessResources>("processResources") {
-    dependsOn(processBuild)
+//    dependsOn(processBuild)
     from(project.file("native/build/lib/libwvbridge.dylib"))
 }
 

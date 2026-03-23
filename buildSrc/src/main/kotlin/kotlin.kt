@@ -54,8 +54,8 @@ fun Project.library(
 
         iosArm64()
         iosSimulatorArm64()
-//        wasmJs { browser() }
-//        js { browser() }
+        wasmJs { browser() }
+        js { browser() }
 
         block()
     }

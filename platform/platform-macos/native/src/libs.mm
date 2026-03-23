@@ -140,7 +140,7 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
     if (!ctx) return;
 
-    runOnMainSync(^{
+    runOnMainAsync(^{
         if (!ctx) return;
         if (w <= 0 || h <= 0) return;
 

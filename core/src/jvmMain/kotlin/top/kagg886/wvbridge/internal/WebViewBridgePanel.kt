@@ -3,6 +3,7 @@ package top.kagg886.wvbridge.internal
 import java.awt.Canvas
 import java.awt.Color
 import java.awt.Graphics
+import java.awt.Point
 import java.awt.event.*
 import java.io.File
 import java.nio.file.Files
@@ -35,6 +36,12 @@ import javax.swing.SwingUtilities
  */
 public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
+
+    override fun getLocationOnScreen(): Point = try {
+        super.getLocationOnScreen()
+    } catch (_: Exception) {
+        bounds.location
+    }
 
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
