@@ -14,14 +14,30 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
     state as SwingPanelState
 
     DisposableEffect(Unit) {
+        onDispose {
+            state.instance.close()
+        }
+    }
+
+    DisposableEffect(Unit) {
         val listener: Consumer<String> = {
-            state.url = it
             state.state = LoadingState.Loading(0.0f)
         }
 
         state.instance.addPageLoadingStartListener(listener)
         onDispose {
             state.instance.removePageLoadingStartListener(listener)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val listener: Consumer<String> = {
+            state.url = it
+        }
+
+        state.instance.addURLChangeListener(listener)
+        onDispose {
+            state.instance.removeURLChangeListener(listener)
         }
     }
 

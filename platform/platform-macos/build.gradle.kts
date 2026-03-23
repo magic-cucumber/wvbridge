@@ -25,7 +25,7 @@ val processBuild = tasks.register<Exec>("processBuild") {
             mkdir -p build && \
             cd build && \
             cmake .. && \
-            make &&
+            make
         """.trimIndent()
     )
 }

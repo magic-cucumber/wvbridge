@@ -9,8 +9,10 @@ import java.io.File
 import java.nio.file.Files
 import java.util.function.Consumer
 import java.awt.Window
+import java.util.concurrent.locks.ReentrantLock
 import java.util.function.BiConsumer
 import javax.swing.SwingUtilities
+import kotlin.concurrent.withLock
 
 /**
  * WebView 页面加载生命周期说明：
@@ -80,7 +82,6 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
         val insets = window.insets
         val point = SwingUtilities.convertPoint(this, 0, 0, window)
         point.translate(-insets.left, -insets.top)
-        println(point)
         return point
     }
     override fun paint(g: Graphics?) {
@@ -217,8 +218,12 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
     public fun goBack(): Boolean = goBack(handle)
     public fun goForward(): Boolean = goForward(handle)
 
-    override fun close(): Unit = close0(handle).apply {
-        handle = 0
+    private val closeLock = ReentrantLock()
+    override fun close(): Unit = closeLock.withLock {
+        val handle = handle
+        if (handle == 0L) return@withLock
+        close0(handle)
+        this.handle = 0
     }
 
     // --------------init and close--------------

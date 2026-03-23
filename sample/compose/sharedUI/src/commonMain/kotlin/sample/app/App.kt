@@ -5,10 +5,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import top.kagg886.wvbridge.LoadingState
@@ -24,62 +22,59 @@ fun App() {
                 modifier = Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                BrowserDialog(initialUrl = "https://www.baidu.com")
+                var url by remember { mutableStateOf("https://www.baidu.com") }
+                val webViewState = rememberWebViewState(url)
+
+                var dialog by remember {
+                    mutableStateOf("")
+                }
+
+                LaunchedEffect(webViewState.state) {
+                    val state = webViewState.state
+                    if (state is LoadingState.LoadingEnd && !state.success) {
+                        dialog = state.reason ?: "unknown error"
+                    }
+                }
+
+                LaunchedEffect(webViewState.url) {
+                    if (webViewState.url.isNotBlank() && webViewState.url != url) {
+                        url = webViewState.url
+                    }
+                }
+
+                Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    with(webViewState.state) {
+                        if (this is LoadingState.Loading) {
+                            LinearProgressIndicator(
+                                progress = { this.progress },
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            )
+                        }
+                    }
+                    BrowserToolbar(
+                        urlInput = url,
+                        onUrlInputChange = { url = it },
+                        onSubmitUrl = { webViewState.navigator.loadUrl(url) },
+                        navigator = webViewState.navigator,
+                        isLoading = webViewState.state is LoadingState.Loading,
+                    )
+                    WebView(
+                        state = webViewState,
+                        modifier = Modifier.fillMaxSize().padding(top = 10.dp),
+                    )
+                }
+
+                if (dialog.isNotBlank()) {
+                    //TODO it will be hidden when running on desktop...
+                    AlertDialog(
+                        onDismissRequest = { dialog = "" },
+                        title = { Text("Error!") },
+                        confirmButton = { TextButton(onClick = {dialog = ""}) { Text("ok!") } },
+                        text = { Text(dialog) }
+                    )
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun BrowserDialog(initialUrl: String) {
-    val webViewState = rememberWebViewState(initialUrl)
-    var urlInput by rememberSaveable { mutableStateOf(initialUrl) }
-
-    val loadingState = webViewState.state
-    val isLoading = loadingState is LoadingState.Loading
-    val loadingProgress = when (loadingState) {
-        is LoadingState.Loading -> loadingState.progress.coerceIn(0f, 1f)
-        is LoadingState.LoadingEnd -> 1f
-        else -> 0f
-    }
-
-    LaunchedEffect(webViewState.state) {
-        val state = webViewState.state
-        if (state is LoadingState.LoadingEnd && !state.success) {
-            urlInput = state.reason ?: "load error"
-        }
-    }
-
-    LaunchedEffect(webViewState.url) {
-        if (webViewState.url.isNotBlank() && webViewState.url != urlInput) {
-            urlInput = webViewState.url
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-        Text(
-            text = "浏览器对话框",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-        )
-        if (isLoading) {
-            LinearProgressIndicator(
-                progress = { loadingProgress },
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            )
-        }
-        BrowserToolbar(
-            urlInput = urlInput,
-            onUrlInputChange = { urlInput = it },
-            onSubmitUrl = { webViewState.navigator.loadUrl(urlInput) },
-            navigator = webViewState.navigator,
-            isLoading = isLoading,
-        )
-        WebView(
-            state = webViewState,
-            modifier = Modifier.fillMaxSize().padding(top = 10.dp),
-        )
     }
 }
 
@@ -92,7 +87,6 @@ private fun BrowserToolbar(
     isLoading: Boolean,
 ) {
     Row(
-        modifier = Modifier.padding(top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
