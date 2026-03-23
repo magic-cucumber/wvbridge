@@ -41,6 +41,7 @@ public actual fun rememberWebViewState(url: String): WebViewState<*> {
         if (!initialized) {
             return@LaunchedEffect
         }
+        state.url = url
         state.state = LoadingState.Ready
     }
 
