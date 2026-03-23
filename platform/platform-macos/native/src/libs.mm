@@ -117,27 +117,12 @@ API_EXPORT(jlong, initAndAttach) {
         [CATransaction commit];
         [CATransaction flush];
 
-        if (ctx && ctx->webView) {
-            NSView *hostView = ctx->hostView;
-            if (!hostView || ctx->webView.superview != hostView || hostView.window == nil) {
-                hostView = find_view_for_layer(ctx->windowLayer);
-                if (!hostView && ctx->rootLayer) {
-                    hostView = find_view_for_layer(ctx->rootLayer.superlayer);
-                }
 
-                if (hostView) {
-                    ctx->hostWindow = hostView.window;
-                    if (ctx->hostWindow.contentView) {
-                        hostView = ctx->hostWindow.contentView;
-                    }
-                    ctx->hostView = hostView;
-                    [ctx->webView removeFromSuperview];
-                    [hostView addSubview:ctx->webView positioned:NSWindowAbove relativeTo:nil];
-                }
-            } else {
-                ctx->hostWindow = hostView.window;
-            }
-        }
+        NSView *hostView = find_view_for_layer(ctx->windowLayer);
+        ctx->hostWindow = hostView.window;
+        ctx->hostView = ctx->hostWindow.contentView ?: hostView;
+        [ctx->webView removeFromSuperview];
+        [ctx->hostView addSubview:ctx->webView positioned:NSWindowAbove relativeTo:nil];
     });
 
     ds->FreeDrawingSurfaceInfo(dsi);
@@ -168,12 +153,12 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
         if (!ctx->webView) return;
 
         NSRect target = NSMakeRect(
-            (CGFloat) x,
-            ctx->hostView.isFlipped
+                (CGFloat) x,
+                ctx->hostView.isFlipped
                 ? (CGFloat) y
                 : ctx->hostView.bounds.size.height - (CGFloat) y - (CGFloat) h,
-            (CGFloat) w,
-            (CGFloat) h
+                (CGFloat) w,
+                (CGFloat) h
         );
 
         ctx->webView.frame = target;
