@@ -37,31 +37,6 @@ static NSView *find_view_for_layer(CALayer *layer) {
     return nil;
 }
 
-static bool ensure_host_view_attached(WebViewContext *ctx) {
-    if (!ctx || !ctx->webView) return false;
-
-    NSView *hostView = ctx->hostView;
-    if (!hostView || ctx->webView.superview != hostView || hostView.window == nil) {
-        hostView = find_view_for_layer(ctx->windowLayer);
-        if (!hostView && ctx->rootLayer) {
-            hostView = find_view_for_layer(ctx->rootLayer.superlayer);
-        }
-        if (!hostView) return false;
-
-        ctx->hostWindow = hostView.window;
-        if (ctx->hostWindow.contentView) {
-            hostView = ctx->hostWindow.contentView;
-        }
-        ctx->hostView = hostView;
-        [ctx->webView removeFromSuperview];
-        [hostView addSubview:ctx->webView positioned:NSWindowAbove relativeTo:nil];
-    } else {
-        ctx->hostWindow = hostView.window;
-    }
-
-    return ctx->hostView != nil && ctx->hostWindow != nil;
-}
-
 API_EXPORT(jlong, initAndAttach) {
     // JAWT surface layers
     JAWT awt;
@@ -142,7 +117,27 @@ API_EXPORT(jlong, initAndAttach) {
         [CATransaction commit];
         [CATransaction flush];
 
-        ensure_host_view_attached(ctx);
+        if (ctx && ctx->webView) {
+            NSView *hostView = ctx->hostView;
+            if (!hostView || ctx->webView.superview != hostView || hostView.window == nil) {
+                hostView = find_view_for_layer(ctx->windowLayer);
+                if (!hostView && ctx->rootLayer) {
+                    hostView = find_view_for_layer(ctx->rootLayer.superlayer);
+                }
+
+                if (hostView) {
+                    ctx->hostWindow = hostView.window;
+                    if (ctx->hostWindow.contentView) {
+                        hostView = ctx->hostWindow.contentView;
+                    }
+                    ctx->hostView = hostView;
+                    [ctx->webView removeFromSuperview];
+                    [hostView addSubview:ctx->webView positioned:NSWindowAbove relativeTo:nil];
+                }
+            } else {
+                ctx->hostWindow = hostView.window;
+            }
+        }
     });
 
     ds->FreeDrawingSurfaceInfo(dsi);
