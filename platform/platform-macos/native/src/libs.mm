@@ -171,7 +171,6 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
         ctx->rootLayer.frame = layerFrame;
 
         if (!ctx->webView) return;
-//        if (!ensure_host_view_attached(ctx)) return;
 
         NSRect target = NSMakeRect(
             (CGFloat) x,
