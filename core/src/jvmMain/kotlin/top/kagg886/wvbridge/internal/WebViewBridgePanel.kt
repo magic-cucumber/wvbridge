@@ -192,6 +192,7 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
 
     public fun loadUrl(url: String): Unit = loadUrl(handle, url)
     public fun refresh(): Unit = refresh(handle)
+    public fun stop(): Unit = stop(handle)
     public fun goBack(): Boolean = goBack(handle)
     public fun goForward(): Boolean = goForward(handle)
 
@@ -201,21 +202,25 @@ public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() ->
 
     // --------------init and close--------------
     private external fun initAndAttach(): Long
+    private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
+    private external fun requestFocus0(webview: Long)
+    private external fun close0(webview: Long)
+
+    // --------------- listener ----------------
+
     private external fun setPageLoadingStartListener(webview: Long, consumer: Consumer<String>)
     private external fun setPageLoadingProgressListener(webview: Long, consumer: Consumer<Float>)
     private external fun setPageLoadingEndListener(webview: Long, consumer: Consumer<Boolean>)
     private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
     private external fun setCanGoBackChangeListener(webview: Long, handler: Consumer<Boolean>)
     private external fun setCanGoForwardChangeListener(webview: Long, handler: Consumer<Boolean>)
-    private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
-    private external fun requestFocus0(webview: Long)
-    private external fun close0(webview: Long)
 
     // ------------navigate function------------
     private external fun loadUrl(webview: Long, url: String)
     private external fun refresh(webview: Long)
     private external fun goBack(webview: Long): Boolean
     private external fun goForward(webview: Long): Boolean
+    private external fun stop(webview: Long)
 
 
     @Suppress("UnsafeDynamicallyLoadedCode")

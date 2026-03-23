@@ -2,22 +2,15 @@
 
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.awt.*
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
 import javax.swing.*
-
-/**
- * ================================================
- * Author:     886kagg
- * Created on: 2026/2/11 09:59
- * ================================================
- */
 
 private class BrowserPane(
     private val title: String,
     initializeUrl: String,
     webViewInitiallyActive: Boolean = true,
 ) : JPanel(GridBagLayout()) {
+    private val navButtonSize = Dimension(44, 28)
+
     private val progressBar = JProgressBar(0, 100).apply {
         value = 0
         isStringPainted = false
@@ -28,9 +21,10 @@ private class BrowserPane(
     private val urlField = JTextField(initializeUrl).apply {
         preferredSize = Dimension(600, 30)
     }
-    private val backButton = JButton("←")
-    private val forwardButton = JButton("→")
-    private val refreshButton = JButton("⟳")
+    private val backButton = createNavButton("←")
+    private val forwardButton = createNavButton("→")
+    private val refreshButton = createNavButton("⟳")
+    private val stopButton = createNavButton("⏹")
 
     private val webView = WebViewBridgePanel {
         loadUrl(if (urlField.text.isNullOrBlank()) initializeUrl else urlField.text)
@@ -39,25 +33,32 @@ private class BrowserPane(
     private var isWebViewPresent = webViewInitiallyActive
     private var canGoBack = false
     private var canGoForward = false
+    private var isLoading = false
 
-    private fun logState(state: String, value: Any?) {
-        println("[$title][$state] $value")
+    private fun debug(event: String, value: Any?) {
+        println("[$title][$event] $value")
+    }
+
+    private fun createNavButton(text: String): JButton {
+        return JButton(text).apply { preferredSize = navButtonSize }
     }
 
     init {
         border = BorderFactory.createTitledBorder(title)
 
-        webView.addPageLoadingStartListener { url -> logState("pageLoadingStart", url) }
-        webView.addPageLoadingProgressListener { progress -> logState("pageLoadingProgress", progress) }
-        webView.addPageLoadingEndListener { success -> logState("pageLoadingEnd", success) }
-        webView.addURLChangeListener { url -> logState("urlChange", url) }
-        webView.addCanGoBackChangeListener { canGoBack -> logState("canGoBackChange", canGoBack) }
-        webView.addCanGoForwardChangeListener { canGoForward -> logState("canGoForwardChange", canGoForward) }
+        webView.addPageLoadingStartListener { debug("pageLoadingStart", it) }
+        webView.addPageLoadingProgressListener { debug("pageLoadingProgress", it) }
+        webView.addPageLoadingEndListener { debug("pageLoadingEnd", it) }
+        webView.addURLChangeListener { debug("urlChange", it) }
+        webView.addCanGoBackChangeListener { debug("canGoBackChange", it) }
+        webView.addCanGoForwardChangeListener { debug("canGoForwardChange", it) }
 
         webView.addPageLoadingStartListener {
             SwingUtilities.invokeLater {
+                isLoading = true
                 progressBar.value = 0
                 progressBar.isVisible = true
+                updateNavButtons()
             }
         }
         webView.addPageLoadingProgressListener { progress ->
@@ -69,8 +70,10 @@ private class BrowserPane(
         }
         webView.addPageLoadingEndListener {
             SwingUtilities.invokeLater {
+                isLoading = false
                 progressBar.value = if (it) 100 else progressBar.value
                 progressBar.isVisible = false
+                updateNavButtons()
             }
         }
         webView.addURLChangeListener {
@@ -95,17 +98,20 @@ private class BrowserPane(
             updateNavButtons()
         }
         backButton.addActionListener {
-            runNavigation {
+            runWebViewAction("Navigation failed") {
                 webView.goBack()
             }
         }
         forwardButton.addActionListener {
-            runNavigation {
+            runWebViewAction("Navigation failed") {
                 webView.goForward()
             }
         }
         refreshButton.addActionListener {
-            runRefresh()
+            runWebViewAction("Refresh failed") { webView.refresh() }
+        }
+        stopButton.addActionListener {
+            runWebViewAction("Stop failed") { webView.stop() }
         }
 
         val navPanel = JPanel(BorderLayout(8, 0)).apply {
@@ -114,6 +120,7 @@ private class BrowserPane(
                     add(backButton)
                     add(forwardButton)
                     add(refreshButton)
+                    add(stopButton)
                 },
                 BorderLayout.WEST
             )
@@ -175,22 +182,13 @@ private class BrowserPane(
     private fun updateNavButtons() {
         backButton.isEnabled = canGoBack
         forwardButton.isEnabled = canGoForward
+        stopButton.isEnabled = isLoading
     }
 
-    private fun runNavigation(action: () -> Boolean) {
-        val result = runCatching { action() }
+    private fun runWebViewAction(fallbackError: String, action: () -> Any?) {
+        val result = runCatching(action)
         result.exceptionOrNull()?.let {
-            JOptionPane.showMessageDialog(this, it.cause?.message ?: it.message ?: "Navigation failed")
-            updateNavButtons()
-            return
-        }
-        updateNavButtons()
-    }
-
-    private fun runRefresh() {
-        val result = runCatching { webView.refresh() }
-        result.exceptionOrNull()?.let {
-            JOptionPane.showMessageDialog(this, it.cause?.message ?: it.message ?: "Refresh failed")
+            JOptionPane.showMessageDialog(this, it.cause?.message ?: it.message ?: fallbackError)
             updateNavButtons()
             return
         }
@@ -199,10 +197,11 @@ private class BrowserPane(
 }
 
 fun main() = SwingUtilities.invokeLater {
-    val frame = JFrame("WebView Bridge Panel Demo")
-    frame.setSize(1200, 600)
-    frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
-    frame.layout = GridLayout(1, 2, 0, 0)
+    val frame = JFrame("WebView Bridge Panel Demo").apply {
+        setSize(1200, 600)
+        defaultCloseOperation = JFrame.EXIT_ON_CLOSE
+        layout = GridLayout(1, 2, 0, 0)
+    }
 
     val initializeUrl = "https://www.baidu.com"
     val leftPane = BrowserPane("左侧 WebView", initializeUrl)
@@ -220,26 +219,18 @@ fun main() = SwingUtilities.invokeLater {
         val isPresent = leftPane.toggleWebView()
         toggleLeftItem.text = if (isPresent) "删除左侧 WebView" else "显示左侧 WebView"
         frame.revalidate()
-        frame.repaint()
     }
 
     toggleRightItem.addActionListener {
         val isPresent = rightPane.toggleWebView()
         toggleRightItem.text = if (isPresent) "删除右侧 WebView" else "显示右侧 WebView"
         frame.revalidate()
-        frame.repaint()
     }
 
     menu.add(toggleLeftItem)
     menu.add(toggleRightItem)
     menuBar.add(menu)
     frame.jMenuBar = menuBar
-
-    frame.addComponentListener(object : ComponentAdapter() {
-        override fun componentResized(e: ComponentEvent?) {
-            frame.revalidate()
-        }
-    })
 
     frame.isVisible = true
 }

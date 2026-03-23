@@ -14,5 +14,6 @@ public interface WebViewNavigator {
     public fun goBack(): Boolean
     public fun goForward(url: String): Boolean
     public fun refresh()
+    public fun stop()
     public fun loadUrl(url: String)
 }

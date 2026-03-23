@@ -24,6 +24,7 @@ public class SwingPanelNavigator(private val instance: WebViewBridgePanel) : Web
     override fun goForward(url: String): Boolean = instance.goForward()
 
     override fun refresh(): Unit = instance.refresh()
+    override fun stop(): Unit = instance.stop()
 
     override fun loadUrl(url: String): Unit = instance.loadUrl(url)
 }
