@@ -9,10 +9,6 @@ plugins {
 group = "top.kagg886.wvbridge"
 version()
 
-kotlin {
-    jvmToolchain(17)
-}
-
 val processBuild = tasks.register<Exec>("processBuild") {
     onlyIf {
         System.getProperty("os.name").startsWith("Mac")

@@ -1,6 +1,8 @@
 plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.android.application")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -8,14 +10,14 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        minSdk = 23
+        minSdk = 28
         targetSdk = 36
 
         applicationId = "sample.app"
         versionCode = 1
         versionName = "1.0.0"
     }
-    
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
