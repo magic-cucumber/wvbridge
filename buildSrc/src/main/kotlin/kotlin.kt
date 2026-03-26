@@ -23,7 +23,7 @@ fun Project.library(
     jvm: KotlinJvmTarget.() -> Unit = {},
     android: KotlinMultiplatformAndroidLibraryExtension.() -> Unit = {},
     ios: KotlinNativeTarget.() -> Unit = {},
-    wasm: KotlinWasmTargetDsl.() -> Unit = {},
+//    wasm: KotlinWasmTargetDsl.() -> Unit = {},
     js: KotlinJsTargetDsl.() -> Unit = {},
     block: KotlinMultiplatformExtension.() -> Unit = {}
 ) {
@@ -64,8 +64,8 @@ fun Project.library(
 
         iosArm64(ios)
         iosSimulatorArm64(ios)
-        wasmJs { browser(); wasm() }
-        js { browser(); js() }
+//        wasmJs { browser(); wasm() }
+//        js { browser(); js() }
 
         block()
     }
