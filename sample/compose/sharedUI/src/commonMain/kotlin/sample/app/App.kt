@@ -43,13 +43,14 @@ fun App() {
                 }
 
                 Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                    with(webViewState.state) {
-                        if (this is LoadingState.Loading) {
-                            LinearProgressIndicator(
-                                progress = { this.progress },
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            )
-                        }
+                    val progress = remember(webViewState.state) {
+                        (webViewState.state as? LoadingState.Loading)?.progress ?: 0f
+                    }
+                    if (progress != 0f) {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
                     }
                     BrowserToolbar(
                         urlInput = url,
