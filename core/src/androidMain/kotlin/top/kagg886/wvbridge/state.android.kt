@@ -1,5 +1,6 @@
 package top.kagg886.wvbridge
 
+import android.annotation.SuppressLint
 import android.webkit.WebView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,7 @@ public class AndroidWebViewNavigator(private val instance: WebView) : WebViewNav
     override fun loadUrl(url: String): Unit = instance.loadUrl(url)
 }
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 public actual fun rememberWebViewState(url: String): WebViewState<*> {
     val ctx = LocalContext.current

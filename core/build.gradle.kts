@@ -14,7 +14,19 @@ plugins {
 group = "top.kagg886.wvbridge"
 version()
 
-library {
+library(
+    ios = {
+        compilations.all {
+            cinterops {
+                val protocol by creating {
+                    defFile("src/iosMain/interop/protocol.def")
+                    packageName("top.kagg886.wvbridge.internal")
+                    includeDirs("src/iosMain/interop/include")
+                }
+            }
+        }
+    }
+) {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.runtime)

@@ -1,9 +1,15 @@
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
 import org.gradle.api.Project
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinAndroidTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinJsTargetDsl
+import org.jetbrains.kotlin.gradle.targets.js.dsl.KotlinWasmTargetDsl
+import org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget
 
 /**
  * ================================================
@@ -14,6 +20,11 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 @OptIn(ExperimentalKotlinGradlePluginApi::class, ExperimentalWasmDsl::class)
 fun Project.library(
+    jvm: KotlinJvmTarget.() -> Unit = {},
+    android: KotlinMultiplatformAndroidLibraryExtension.() -> Unit = {},
+    ios: KotlinNativeTarget.() -> Unit = {},
+    wasm: KotlinWasmTargetDsl.() -> Unit = {},
+    js: KotlinJsTargetDsl.() -> Unit = {},
     block: KotlinMultiplatformExtension.() -> Unit = {}
 ) {
     extensions.configure<KotlinMultiplatformExtension>("kotlin") {
@@ -35,7 +46,7 @@ fun Project.library(
             }
         }
         jvmToolchain(17)
-        jvm()
+        jvm(jvm)
 
 //        androidTarget()
         extensions.configure<KotlinMultiplatformAndroidLibraryTarget>("android") {
@@ -45,17 +56,16 @@ fun Project.library(
         }
 
 
-
 //        android {
 //            namespace = group.toString()
 //            compileSdk = 35
 //            minSdk = 28
 //        }
 
-        iosArm64()
-        iosSimulatorArm64()
-        wasmJs { browser() }
-        js { browser() }
+        iosArm64(ios)
+        iosSimulatorArm64(ios)
+        wasmJs { browser(); wasm() }
+        js { browser(); js() }
 
         block()
     }
