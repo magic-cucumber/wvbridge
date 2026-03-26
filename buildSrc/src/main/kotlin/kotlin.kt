@@ -98,5 +98,9 @@ fun Project.library(
     extensions.configure<DokkaExtension>("dokka") {
         moduleName.set("${rootProject.name}:${project.name}")
         moduleVersion.set("${version}")
+
+        dokkaSourceSets.configureEach {
+            includes.from("Module.md")
+        }
     }
 }

@@ -11,7 +11,7 @@ plugins {
 }
 
 dokka {
-    moduleName.set("mmkv-multiplatform-binding")
+    moduleName.set(rootProject.name)
 }
 
 dependencies {

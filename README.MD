@@ -2,79 +2,118 @@
 
 **Language:** English | [简体中文](README_ZH.MD)
 
-wvbridge is a **Compose Multiplatform** library that embeds the **host system WebView** and provides a unified, Kotlin-friendly API for bridging common WebView capabilities across platforms.
+`wvbridge` is a **Compose Multiplatform** library that embeds the **host platform WebView** and
+exposes a small, Kotlin-friendly common API for loading pages, observing URL and loading state
+changes, and driving basic browser navigation.
+
+Documentation site: [wvbridge.kagg886.top](https://wvbridge.kagg886.top)
 
 > Note: This project is under active development. APIs and platform coverage may change.
 
-## Project Status
+## Installation
 
-### Roadmap
+Add the common API to your shared source set:
 
-**Done**
-- macOS AWT implementation
+```kotlin
+repositories {
+    mavenCentral()
+}
 
-**Planned / TODO**
-- Windows AWT implementation
-- Linux AWT implementation
-- iOS implementation
-- Android implementation
-- Common (shared) platform API design
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("top.kagg886.wvbridge:core:<version>")
+        }
+    }
+}
+```
 
-### Feature Matrix
+On JVM, `wvbridge` also needs a platform-specific native runtime library. The recommended approach is
+to use Google's `os-detector` Gradle plugin and choose the runtime artifact from
+`osdetector.classifier`.
 
-Legend: ✅ Implemented · 🚧 In progress · ❌ Not implemented · ⛔ Not supported
+```kotlin
+plugins {
+    id("com.google.osdetector") version "1.7.3"
+}
 
-| Feature                  | macOS | Windows | Linux | iOS  | Android |
-| ------------------------ | ----- | ------- | ----- | ---- | ------- |
-| URL change listener      | ✅     | ✅       | ✅     | ❌    | ❌       |
-| Request modification     | ❌     | ❌       | ❌     | ❌    | ❌       |
-| Progress listener        | ✅     | ✅       | ✅     | ❌    | ❌       |
-| Programmatic URL loading | ✅     | ✅       | ✅     | ❌    | ❌       |
-| Basic navigation support | ✅     | ✅       | ✅     | ❌    | ❌       |
-| JavaScript injection     | ❌     | ❌       | ❌     | ❌    | ❌       |
+repositories {
+    mavenCentral()
+}
 
-> Basic navigation support means: one-step forward, one-step back, query can-go-forward, query can-go-back.
+kotlin {
+    jvm()
 
-## Common Platform Design (High-level)
+    sourceSets {
+        jvmMain.dependencies {
+            val platform = when (osdetector.classifier) {
+                "windows-x86_64" -> "platform-windows"
+                "linux-x86_64" -> "platform-linux"
+                "osx-aarch_64" -> "platform-macos"
+                else -> error(
+                    "Unsupported JVM runtime for wvbridge: ${osdetector.classifier}. " +
+                        "Supported classifiers are windows-x86_64, linux-x86_64, and osx-aarch_64."
+                )
+            }
 
-The goal is to expose a **single common API** from `core`, while each platform provides its own backend implementation:
+            runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+        }
+    }
+}
+```
 
-- `core`: common interfaces, events, and shared logic
-- `platform/*`: platform-specific WebView adapters/backends
-- `sample/*`: demo apps
+Current JVM native runtime support is limited to:
+
+- Windows x64: `windows-x86_64`
+- Linux x64: `linux-x86_64`
+- macOS arm64: `osx-aarch_64`
+
+## Quick Start
+
+Create a remembered state and render `WebView`:
+
+```kotlin
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewState
+
+val webViewState = rememberWebViewState("https://example.com")
+
+WebView(
+    state = webViewState,
+    modifier = Modifier,
+)
+```
+
+Basic navigation uses `WebViewState.navigator`:
+
+```kotlin
+webViewState.navigator.loadUrl("https://kotlinlang.org")
+webViewState.navigator.goBack()
+webViewState.navigator.goForward("")
+webViewState.navigator.refresh()
+webViewState.navigator.stop()
+```
+
+More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.top).
+
+## Notes
+
+- `WebViewState.url` is suitable for address-bar synchronization and may contain custom URL schemes
+  if the underlying native engine supports them.
+- Desktop backends use native on-screen rendered WebViews. Compose or Swing content cannot be drawn
+  above the WebView on desktop platforms.
+- The library intentionally wraps the platform-native WebView instead of embedding a Chromium-based
+  browser engine.
 
 ## Run Sample App
 
-- Desktop JVM: `./gradlew :sample:composeApp:run`
-- Android: `open project in Android Studio and run the sample app`
-- iOS: `open 'sample/iosApp/iosApp.xcodeproj' in Xcode and run the sample app`
-- JavaScript: `./gradlew :sample:composeApp:jsBrowserRun`
-- Wasm: `./gradlew :sample:composeApp:wasmJsBrowserRun`
+- Desktop JVM: `./gradlew :sample:compose:desktopApp:run`
+- Android: open the project in Android Studio and run `sample/compose/androidApp`
+- iOS: open `sample/compose/iosApp/iosApp.xcodeproj` in Xcode and run the sample app
 
-## Publish to MavenLocal
+## Project Layout
 
-1) Run `./gradlew :lib:publishToMavenLocal`
-2) Open `~/.m2/repository/top/kagg886/wvbridge/`
-
-## Publish to MavenCentral
-
-1) Create an account and a namespace on Sonatype:  
-   https://central.sonatype.org/register/central-portal/#create-an-account
-2) Add developer id, name, email and the project url to  
-   `./lib/build.gradle.kts`
-3) Generate a GPG key:  
-   https://getstream.io/blog/publishing-libraries-to-mavencentral-2021/#generating-a-gpg-key-pair
-   ```
-   gpg --full-gen-key
-   gpg --keyserver keyserver.ubuntu.com --send-keys XXXXXXXX
-   gpg --export-secret-key XXXXXXXX > XXXXXXXX.gpg
-   ```
-4) Add these lines to `gradle.properties`:
-   ```
-   signing.keyId=XXXXXXXX
-   signing.password=[key password]
-   signing.secretKeyRingFile=../XXXXXXXX.gpg
-   mavenCentralUsername=[generated username]
-   mavenCentralPassword=[generated password]
-   ```
-5) Run `./gradlew :lib:publishAndReleaseToMavenCentral --no-configuration-cache`
+- `core`: common interfaces, states, and Compose API
+- `platform/*`: JVM native runtime backends for each desktop platform
+- `sample/*`: sample applications

@@ -5,9 +5,9 @@ runs:
   using: "composite"
   steps:
     - uses: actions/setup-java@v4
-      name: Set up JDK 22
+      name: Set up JDK 17
       with:
-        java-version: '22'
+        java-version: '17'
         distribution: 'temurin'
 
     - uses: gradle/actions/setup-gradle@v4

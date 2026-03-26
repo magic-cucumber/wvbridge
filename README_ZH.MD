@@ -2,78 +2,112 @@
 
 **语言：** [English](README.MD) | 简体中文
 
-wvbridge 是一个 **Compose Multiplatform** 库，用于在各个平台上接入**宿主系统的 WebView**，并提供一套统一、对 Kotlin 友好的 API，用来桥接常见的 WebView 能力。
+`wvbridge` 是一个 **Compose Multiplatform** 库，用于接入**宿主平台自带的 WebView**，并提供一套小而统一、对 Kotlin 友好的 common API，用来加载页面、监听 URL 与加载状态变化，以及执行基础导航操作。
 
-> 注意：本项目仍处于活跃开发阶段，API 与平台覆盖范围可能会发生变化。
+文档站点：[wvbridge.kagg886.top](https://wvbridge.kagg886.top)
 
-## 项目状态
+> 注意：本项目仍处于活跃开发阶段，API 与平台覆盖范围可能发生变化。
 
-### 计划（Roadmap）
+## 安装
 
-**已完成**
-- macOS AWT 实现
+先在共享代码的 `commonMain` 中引入 common API：
 
-**待完成 / TODO**
-- Windows AWT 实现
-- Linux AWT 实现
-- iOS 实现
-- Android 实现
-- common（共享）平台 API 设计
+```kotlin
+repositories {
+    mavenCentral()
+}
 
-### 特性矩阵
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("top.kagg886.wvbridge:core:<version>")
+        }
+    }
+}
+```
 
-图例：✅ 已实现 · 🚧 施工中 · ❌ 未实现 · ⛔ 无法支持
+在 JVM 侧，`wvbridge` 还需要额外引入对应平台的原生动态库。推荐使用 Google 的
+`os-detector` Gradle 插件，通过 `osdetector.classifier` 选择对应运行时产物。
 
-| 特性 | macOS | Windows | Linux | iOS | Android |
-| --- | --- | --- | --- | --- | --- |
-| 地址栏监听 | ✅ | ✅ | ✅ | ❌ | ❌ |
-| 请求拦截 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 进度监听 | ✅ | ✅ | ✅ | ❌ | ❌ |
-| 主动加载 URL | ✅ | ✅ | ✅ | ❌ | ❌ |
-| 基础导航支持 | ✅ | ✅ | ✅ | ❌ | ❌ |
-| JS 注入 | ❌ | ❌ | ❌ | ❌ | ❌ |
+```kotlin
+plugins {
+    id("com.google.osdetector") version "1.7.3"
+}
 
-> 基础导航支持是指：向前一步，向后一步，获取是否向前，获取是否向后。
+repositories {
+    mavenCentral()
+}
 
-## common 平台设计（高层说明）
+kotlin {
+    jvm()
 
-目标是在 `core` 中提供**单一的 common API**，并由各个平台提供各自的后端实现：
+    sourceSets {
+        jvmMain.dependencies {
+            val platform = when (osdetector.classifier) {
+                "windows-x86_64" -> "platform-windows"
+                "linux-x86_64" -> "platform-linux"
+                "osx-aarch_64" -> "platform-macos"
+                else -> error(
+                    "Unsupported JVM runtime for wvbridge: ${osdetector.classifier}. " +
+                        "Supported classifiers are windows-x86_64, linux-x86_64, and osx-aarch_64."
+                )
+            }
 
-- `core`：通用接口、事件与共享逻辑
-- `platform/*`：平台侧 WebView 适配/后端实现
+            runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+        }
+    }
+}
+```
+
+当前 JVM 原生运行时仅支持：
+
+- Windows x64: `windows-x86_64`
+- Linux x64: `linux-x86_64`
+- macOS arm64: `osx-aarch_64`
+
+## 快速使用
+
+创建一个 remembered state，然后渲染 `WebView`：
+
+```kotlin
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewState
+
+val webViewState = rememberWebViewState("https://example.com")
+
+WebView(
+    state = webViewState,
+    modifier = Modifier,
+)
+```
+
+基础导航通过 `WebViewState.navigator` 完成：
+
+```kotlin
+webViewState.navigator.loadUrl("https://kotlinlang.org")
+webViewState.navigator.goBack()
+webViewState.navigator.goForward("")
+webViewState.navigator.refresh()
+webViewState.navigator.stop()
+```
+
+更多特性请参考 [wvbridge.kagg886.top](https://wvbridge.kagg886.top)。
+
+## 说明
+
+- `WebViewState.url` 很适合同步地址栏；如果底层原生引擎支持，也可以承载自定义 URL scheme。
+- 桌面端后端使用的是原生 on-screen 渲染 WebView，因此不能在 WebView 上方叠放 Compose 或 Swing 内容。
+- 这个库刻意选择封装平台原生 WebView，而不是引入 Chromium 一类更重的浏览器内核。
+
+## 运行示例
+
+- Desktop JVM：`./gradlew :sample:compose:desktopApp:run`
+- Android：使用 Android Studio 打开项目并运行 `sample/compose/androidApp`
+- iOS：使用 Xcode 打开 `sample/compose/iosApp/iosApp.xcodeproj` 并运行示例
+
+## 项目结构
+
+- `core`：common 接口、状态与 Compose API
+- `platform/*`：各桌面平台对应的 JVM 原生运行时后端
 - `sample/*`：示例应用
-
-## 运行示例应用
-
-- Desktop JVM：`./gradlew :sample:composeApp:run`
-- Android：`open project in Android Studio and run the sample app`
-- iOS：`open 'sample/iosApp/iosApp.xcodeproj' in Xcode and run the sample app`
-- JavaScript：`./gradlew :sample:composeApp:jsBrowserRun`
-- Wasm：`./gradlew :sample:composeApp:wasmJsBrowserRun`
-
-## 发布到 MavenLocal
-
-1) 运行 `./gradlew :lib:publishToMavenLocal`
-2) 打开 `~/.m2/repository/top/kagg886/wvbridge/`
-
-## 发布到 MavenCentral
-
-1) 在 Sonatype 创建账号与 namespace：  
-   https://central.sonatype.org/register/central-portal/#create-an-account
-2) 在 `./lib/build.gradle.kts` 中添加 developer id、name、email 与项目 URL  
-3) 生成 GPG key：  
-   https://getstream.io/blog/publishing-libraries-to-mavencentral-2021/#generating-a-gpg-key-pair
-   ```
-   gpg --full-gen-key
-   gpg --keyserver keyserver.ubuntu.com --send-keys XXXXXXXX
-   gpg --export-secret-key XXXXXXXX > XXXXXXXX.gpg
-   ```
-4) 在 `gradle.properties` 中添加：
-   ```
-   signing.keyId=XXXXXXXX
-   signing.password=[key password]
-   signing.secretKeyRingFile=../XXXXXXXX.gpg
-   mavenCentralUsername=[generated username]
-   mavenCentralPassword=[generated password]
-   ```
-5) 运行 `./gradlew :lib:publishAndReleaseToMavenCentral --no-configuration-cache`
