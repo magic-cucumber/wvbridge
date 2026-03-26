@@ -38,7 +38,7 @@ import kotlin.concurrent.withLock
  * - `onPageLoadingProgress` 可能先于 `onPageLoadingStart`。
  * - 一次用户操作（如点击）可能触发多个“start -> progress* -> end”完整周期（跳转 + 重定向）。
  */
-public class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
+internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
     private var handle = 0L
 
     init {

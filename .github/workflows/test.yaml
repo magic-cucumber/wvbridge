@@ -1,0 +1,84 @@
+name: test.yaml
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+
+jobs:
+  test-jvm-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-base
+      - name: Run Test
+        uses: ./.github/actions/test-jvm
+
+  test-jvm-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-base
+
+      - name: Run Test
+        uses: ./.github/actions/test-jvm
+
+      - name: Upload crash logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-crash
+          path: |
+            /home/runner/work/**/hs_err_pid*.log
+            /home/runner/work/**/core/core.*
+
+  test-jvm-macos:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Environment
+        uses: ./.github/actions/setup-base
+
+      - name: Run Test
+        uses: ./.github/actions/test-jvm
+
+
+  test-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Environment
+        uses: ./.github/actions/setup-base
+
+      - name: Run Test
+        uses: ./.github/actions/test-android
+
+  test-ios:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-base
+
+      - name: Run Test
+        uses: ./.github/actions/test-ios

@@ -11,11 +11,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 
 @JvmInline
-public value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
+internal value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
     override fun close(): Unit = Unit
 }
 
-public class AndroidWebViewState(delegate: AutoClosableWebView) : WebViewState<AutoClosableWebView>(delegate) {
+internal class AndroidWebViewState(delegate: AutoClosableWebView) : WebViewState<AutoClosableWebView>(delegate) {
     internal val _navigator by lazy {
         AndroidWebViewNavigator(delegate.instance)
     }
@@ -23,7 +23,7 @@ public class AndroidWebViewState(delegate: AutoClosableWebView) : WebViewState<A
         get() = _navigator
 }
 
-public class AndroidWebViewNavigator(private val instance: WebView) : WebViewNavigator {
+internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewNavigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)

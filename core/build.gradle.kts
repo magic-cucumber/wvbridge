@@ -9,6 +9,8 @@ plugins {
     id("com.vanniktech.maven.publish")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+
+    id("org.jetbrains.dokka")
 }
 
 group = "top.kagg886.wvbridge"

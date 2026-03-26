@@ -1,6 +1,14 @@
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryExtension
 import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
+import org.gradle.api.Action
+import org.gradle.api.ExtensiblePolymorphicDomainObjectContainer
 import org.gradle.api.Project
+import org.gradle.api.plugins.ExtensionAware
+import org.gradle.kotlin.dsl.invoke
+import org.jetbrains.dokka.DokkaDefaults.pluginsConfiguration
+import org.jetbrains.dokka.gradle.DokkaExtension
+import org.jetbrains.dokka.gradle.engine.plugins.DokkaPluginParametersBaseSpec
+import org.jetbrains.dokka.gradle.engine.plugins.DokkaVersioningPluginParameters
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
@@ -70,4 +78,25 @@ fun Project.library(
         block()
     }
 
+
+    /**
+     *
+     * dokka {
+     *     moduleName.set("mmkv-multiplatform-binding:core")
+     *     pluginsConfiguration {
+     *         versioning {
+     *             version.set(coreVersion)
+     *         }
+     *     }
+     *
+     *     dokkaSourceSets.configureEach {
+     *         includes.from("Module.md")
+     *     }
+     * }
+     *
+     */
+    extensions.configure<DokkaExtension>("dokka") {
+        moduleName.set("${rootProject.name}:${project.name}")
+        moduleVersion.set("${version}")
+    }
 }

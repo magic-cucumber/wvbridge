@@ -11,11 +11,11 @@ import platform.Foundation.NSURLRequest
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 
-public class AutoClosableWKWebView(public val delegate: WKWebView) : AutoCloseable {
+internal class AutoClosableWKWebView(public val delegate: WKWebView) : AutoCloseable {
     override fun close(): Unit = Unit
 }
 
-public class WKWebViewState(instance: AutoClosableWKWebView) : WebViewState<AutoClosableWKWebView>(instance) {
+internal class WKWebViewState(instance: AutoClosableWKWebView) : WebViewState<AutoClosableWKWebView>(instance) {
     internal val _navigator by lazy {
         WKWebViewNavigator(instance.delegate)
     }
@@ -24,7 +24,7 @@ public class WKWebViewState(instance: AutoClosableWKWebView) : WebViewState<Auto
 
 }
 
-public class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavigator {
+internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)

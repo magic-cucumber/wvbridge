@@ -6,4 +6,14 @@ plugins {
     id("org.jetbrains.compose") apply false
     id("org.jetbrains.kotlin.plugin.compose") apply false
     id("com.android.application") apply false
+
+    id("org.jetbrains.dokka")
+}
+
+dokka {
+    moduleName.set("mmkv-multiplatform-binding")
+}
+
+dependencies {
+    dokka(project(":core"))
 }

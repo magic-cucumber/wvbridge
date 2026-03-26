@@ -4,7 +4,7 @@ import androidx.compose.runtime.*
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.util.function.Consumer
 
-public class SwingPanelState internal constructor(instance: WebViewBridgePanel) :
+internal class SwingPanelState internal constructor(instance: WebViewBridgePanel) :
     WebViewState<WebViewBridgePanel>(instance) {
     internal val _navigator by lazy {
         SwingPanelNavigator(instance)
@@ -13,7 +13,7 @@ public class SwingPanelState internal constructor(instance: WebViewBridgePanel) 
         get() = _navigator
 }
 
-public class SwingPanelNavigator(private val instance: WebViewBridgePanel) : WebViewNavigator {
+internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : WebViewNavigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)
