@@ -26,11 +26,8 @@ set(JNI_INCLUDE_DIRS
         ${JAVA_HOME}/include/darwin
 )
 
-# 设置JNI和JAWT库路径
-set(JNI_LIBRARIES
-        ${JAVA_HOME}/lib/libjawt.dylib
-        ${JAVA_HOME}/lib/libinstrument.dylib
-)
+# 该库仅由 JVM 进程加载，JAWT 由当前运行时提供。
+set(JAWT_LIBRARY ${JAVA_HOME}/lib/libjawt.dylib)
 
 # 源文件
 set(SOURCES
@@ -59,7 +56,7 @@ target_include_directories(wvbridge PRIVATE
 
 # 链接库
 target_link_libraries(wvbridge PRIVATE
-        ${JNI_LIBRARIES}
+        ${JAWT_LIBRARY}
         "-framework WebKit"
         "-framework Cocoa"
         "-framework Foundation"
@@ -78,6 +75,9 @@ set_target_properties(wvbridge PROPERTIES
         OUTPUT_NAME "wvbridge"
         PREFIX "lib"
         SUFFIX ".dylib"
+        SKIP_BUILD_RPATH TRUE
+        BUILD_WITH_INSTALL_RPATH FALSE
+        INSTALL_RPATH ""
 )
 
 # 安装规则
