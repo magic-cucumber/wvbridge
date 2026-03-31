@@ -29,6 +29,8 @@ jobs:
 
       - name: Setup Environment
         uses: ./.github/actions/setup-base
+        with:
+          linux: 'true'
 
       - name: Run Test
         uses: ./.github/actions/test-jvm

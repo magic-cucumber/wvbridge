@@ -79,22 +79,6 @@ fun Project.library(
     }
 
 
-    /**
-     *
-     * dokka {
-     *     moduleName.set("mmkv-multiplatform-binding:core")
-     *     pluginsConfiguration {
-     *         versioning {
-     *             version.set(coreVersion)
-     *         }
-     *     }
-     *
-     *     dokkaSourceSets.configureEach {
-     *         includes.from("Module.md")
-     *     }
-     * }
-     *
-     */
     extensions.configure<DokkaExtension>("dokka") {
         moduleName.set("${rootProject.name}:${project.name}")
         moduleVersion.set("${version}")
