@@ -20,7 +20,9 @@ target_include_directories(wvbridge_platform_common PUBLIC
 
 find_package(Threads REQUIRED)
 
-find_package(JNI QUIET)
+if (NOT WIN32)
+    find_package(JNI QUIET)
+endif ()
 
 if (JNI_INCLUDE_DIRS)
     set(WVBRIDGE_COMMON_JNI_INCLUDE_DIRS ${JNI_INCLUDE_DIRS})
@@ -29,7 +31,7 @@ else ()
         message(FATAL_ERROR "JAVA_HOME not set")
     endif ()
 
-    set(WVBRIDGE_COMMON_JAVA_HOME "$ENV{JAVA_HOME}")
+    file(TO_CMAKE_PATH "$ENV{JAVA_HOME}" WVBRIDGE_COMMON_JAVA_HOME)
     set(WVBRIDGE_COMMON_JNI_PLATFORM_INCLUDE_DIR "")
 
     if (WIN32)

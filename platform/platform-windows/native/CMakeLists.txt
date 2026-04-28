@@ -21,7 +21,7 @@ if(NOT DEFINED ENV{JAVA_HOME})
     message(FATAL_ERROR "JAVA_HOME not set")
 endif()
 
-set(JAVA_HOME "$ENV{JAVA_HOME}")
+file(TO_CMAKE_PATH "$ENV{JAVA_HOME}" JAVA_HOME)
 
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../common/native"
     "${CMAKE_BINARY_DIR}/platform-common"
