@@ -10,14 +10,13 @@
 #include <jni.h>
 #include <mutex>
 
+#include "wvbridge/java_caller.h"
+
 #include "thread.h"
 
 struct JavaListenerState {
     std::mutex mutex;
-    jobject global = nullptr;
-    jmethodID mid = nullptr;
-    bool use_accept = true;
-    bool two_args = false;
+    java_caller* caller = nullptr;
 };
 
 struct WebViewContext {

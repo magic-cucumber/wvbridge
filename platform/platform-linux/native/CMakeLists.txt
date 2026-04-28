@@ -15,6 +15,10 @@ endif ()
 
 set(JAVA_HOME $ENV{JAVA_HOME})
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../common/native
+        ${CMAKE_BINARY_DIR}/platform-common
+)
+
 set(JNI_INCLUDE_DIRS
         ${JAVA_HOME}/include
         ${JAVA_HOME}/include/linux
@@ -44,7 +48,6 @@ pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
 
 set(SOURCES
         src/libs.cpp
-        src/java_listener.cpp
         src/utils.h
         src/utils.cpp
         src/gtk.h
@@ -72,6 +75,7 @@ target_include_directories(wvbridge PRIVATE
 )
 
 target_link_libraries(wvbridge PRIVATE
+        wvbridge::platform_common
         ${JAWT_LIB}           # Java AWT
         ${GTK3_LIBRARIES}     # GTK3
         ${X11_LIBRARIES}      # X11

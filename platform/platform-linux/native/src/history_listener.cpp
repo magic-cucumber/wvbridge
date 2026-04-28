@@ -2,13 +2,18 @@
 
 #include <glib.h>
 
-#include "java_listener.h"
+#include <cstring>
+#include <mutex>
+
+#include "wvbridge/java_caller.h"
+#include "wvbridge/utils.h"
 
 namespace wvbridge {
 
 struct HistoryListenerState {
-    JavaListener* can_go_back_listener = nullptr;
-    JavaListener* can_go_forward_listener = nullptr;
+    std::mutex listener_mutex;
+    java_caller* can_go_back_listener = nullptr;
+    java_caller* can_go_forward_listener = nullptr;
 
     gulong back_forward_list_changed_handler_id = 0;
     WebKitBackForwardList* back_forward_list = nullptr;
@@ -24,11 +29,67 @@ bool should_skip_due_to_closing(const HistoryListenerState* state) {
     return state->closing->load(std::memory_order_acquire);
 }
 
+java_caller* create_listener(JNIEnv* env, jobject listener) {
+    if (!env || !listener) return nullptr;
+
+    java_caller* caller = nullptr;
+    java_caller_status status = java_caller_create(env, listener, "accept", "(Ljava/lang/Object;)V", &caller);
+    if (status == JAVA_CALLER_ERR_METHOD_NOT_FOUND) {
+        status = java_caller_create(env, listener, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;", &caller);
+    }
+    return status == JAVA_CALLER_OK ? caller : nullptr;
+}
+
+void replace_listener(HistoryListenerState* state, java_caller** slot, JNIEnv* env, jobject listener) {
+    if (!state || !slot || !env) return;
+
+    java_caller* caller = create_listener(env, listener);
+    java_caller* old = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state->listener_mutex);
+        old = *slot;
+        *slot = caller;
+    }
+    java_caller_destroy(old);
+}
+
+void destroy_listener(HistoryListenerState* state, java_caller** slot) {
+    java_caller* old = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state->listener_mutex);
+        old = *slot;
+        *slot = nullptr;
+    }
+    java_caller_destroy(old);
+}
+
+void notify_boolean(HistoryListenerState* state, java_caller* slot, bool value) {
+    if (!state) return;
+
+    java_caller* caller = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state->listener_mutex);
+        caller = java_caller_retain(slot);
+    }
+    if (!caller) return;
+
+    jvalue boxed;
+    if (java_caller_pack_boolean(value ? JNI_TRUE : JNI_FALSE, &boxed) == JAVA_CALLER_OK) {
+        jvalue args[1];
+        std::memset(args, 0, sizeof(args));
+        args[0] = boxed;
+        java_caller_invoke(caller, args, nullptr);
+        java_caller_delete_global_ref(boxed.l);
+    }
+
+    java_caller_release(caller);
+}
+
 void notify_current(WebKitWebView* webview, HistoryListenerState* state) {
     if (!webview || !state || should_skip_due_to_closing(state)) return;
 
-    java_listener_notify_boolean(state->can_go_back_listener, webkit_web_view_can_go_back(webview));
-    java_listener_notify_boolean(state->can_go_forward_listener, webkit_web_view_can_go_forward(webview));
+    notify_boolean(state, state->can_go_back_listener, webkit_web_view_can_go_back(webview));
+    notify_boolean(state, state->can_go_forward_listener, webkit_web_view_can_go_forward(webview));
 }
 
 void back_forward_list_changed_cb(WebKitBackForwardList* back_forward_list,
@@ -50,33 +111,23 @@ void back_forward_list_changed_cb(WebKitBackForwardList* back_forward_list,
 } // namespace
 
 HistoryListenerState* history_listener_state_new(JNIEnv* env) {
-    auto* state = new HistoryListenerState();
-    state->can_go_back_listener = java_listener_new(env);
-    state->can_go_forward_listener = java_listener_new(env);
-    if (!state->can_go_back_listener || !state->can_go_forward_listener) {
-        java_listener_destroy(state->can_go_back_listener);
-        java_listener_destroy(state->can_go_forward_listener);
-        delete state;
-        return nullptr;
-    }
-    return state;
+    (void) env;
+    return new HistoryListenerState();
 }
 
 void history_listener_state_destroy(HistoryListenerState* state) {
     if (!state) return;
-    java_listener_destroy(state->can_go_back_listener);
-    java_listener_destroy(state->can_go_forward_listener);
+    destroy_listener(state, &state->can_go_back_listener);
+    destroy_listener(state, &state->can_go_forward_listener);
     delete state;
 }
 
 void history_listener_set_can_go_back_listener(JNIEnv* env, HistoryListenerState* state, jobject listener) {
-    if (!state) return;
-    java_listener_set(env, state->can_go_back_listener, listener);
+    replace_listener(state, &state->can_go_back_listener, env, listener);
 }
 
 void history_listener_set_can_go_forward_listener(JNIEnv* env, HistoryListenerState* state, jobject listener) {
-    if (!state) return;
-    java_listener_set(env, state->can_go_forward_listener, listener);
+    replace_listener(state, &state->can_go_forward_listener, env, listener);
 }
 
 void history_listener_install(WebKitWebView* webview, HistoryListenerState* state, const std::atomic_bool* closing_flag) {

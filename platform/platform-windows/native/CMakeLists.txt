@@ -22,6 +22,11 @@ if(NOT DEFINED ENV{JAVA_HOME})
 endif()
 
 set(JAVA_HOME "$ENV{JAVA_HOME}")
+
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../common/native"
+    "${CMAKE_BINARY_DIR}/platform-common"
+)
+
 set(JNI_INCLUDE_DIRS
     "${JAVA_HOME}/include"
     "${JAVA_HOME}/include/win32"
@@ -113,7 +118,6 @@ set(WEBVIEW2_LOADER_LIB "${WEBVIEW2_LOADER_STATIC_LIB}")
 
 set(SOURCES
     src/history_events.cpp
-    src/java_listener.cpp
     src/libs.cpp
     src/page_loading_events.cpp
     src/thread.cpp
@@ -132,6 +136,7 @@ target_include_directories(wvbridge PRIVATE
 target_link_directories(wvbridge PRIVATE ${JAVA_LIB_DIRS})
 
 target_link_libraries(wvbridge PRIVATE
+    wvbridge::platform_common
     "${WEBVIEW2_LOADER_LIB}"
     jawt.lib
     jvm.lib

@@ -16,13 +16,13 @@
 #include <vector>
 
 #include "history_events.h"
-#include "java_listener.h"
 #include "page_loading_events.h"
 #include "thread.h"
 #include "url_events.h"
 #include "utils.h"
 #include "webview2_callback.h"
 #include "webview_context.h"
+#include "wvbridge/java_caller.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -259,6 +259,64 @@ std::string build_init_error(
         oss << ", detail=" << extra;
     }
     return oss.str();
+}
+
+java_caller *create_listener(JNIEnv *env,
+                             jobject listener,
+                             const char *accept_signature,
+                             const char *invoke_signature) {
+    if (!env || !listener) return nullptr;
+
+    java_caller *caller = nullptr;
+    java_caller_status status = java_caller_create(env, listener, "accept", accept_signature, &caller);
+    if (status == JAVA_CALLER_ERR_METHOD_NOT_FOUND) {
+        status = java_caller_create(env, listener, "invoke", invoke_signature, &caller);
+    }
+    return status == JAVA_CALLER_OK ? caller : nullptr;
+}
+
+void replace_listener_with_signatures(JNIEnv *env,
+                                      JavaListenerState &state,
+                                      jobject listener,
+                                      const char *accept_signature,
+                                      const char *invoke_signature) {
+    java_caller *caller = create_listener(env, listener, accept_signature, invoke_signature);
+
+    java_caller *old = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        old = state.caller;
+        state.caller = caller;
+    }
+    java_caller_destroy(old);
+}
+
+void replace_listener(JNIEnv *env, JavaListenerState &state, jobject listener) {
+    replace_listener_with_signatures(env,
+                                     state,
+                                     listener,
+                                     "(Ljava/lang/Object;)V",
+                                     "(Ljava/lang/Object;)Ljava/lang/Object;");
+}
+
+void replace_listener_with_two_args(JNIEnv *env, JavaListenerState &state, jobject listener) {
+    replace_listener_with_signatures(env,
+                                     state,
+                                     listener,
+                                     "(Ljava/lang/Object;Ljava/lang/Object;)V",
+                                     "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+}
+
+void clear_listener(JNIEnv *env, JavaListenerState &state) {
+    (void) env;
+
+    java_caller *old = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        old = state.caller;
+        state.caller = nullptr;
+    }
+    java_caller_destroy(old);
 }
 
 void destroy_ctx(JNIEnv *env, WebViewContext *ctx) {

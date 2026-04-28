@@ -20,6 +20,10 @@ endif ()
 
 set(JAVA_HOME $ENV{JAVA_HOME})
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../common/native
+        ${CMAKE_BINARY_DIR}/platform-common
+)
+
 # 设置JNI和JAWT包含路径
 set(JNI_INCLUDE_DIRS
         ${JAVA_HOME}/include
@@ -32,7 +36,6 @@ set(JAWT_LIBRARY ${JAVA_HOME}/lib/libjawt.dylib)
 # 源文件
 set(SOURCES
         src/history_listener.mm
-        src/java_callback.mm
         src/libs.mm
         src/page_loading.mm
         src/utils.mm
@@ -56,6 +59,7 @@ target_include_directories(wvbridge PRIVATE
 
 # 链接库
 target_link_libraries(wvbridge PRIVATE
+        wvbridge::platform_common
         ${JAWT_LIBRARY}
         "-framework WebKit"
         "-framework Cocoa"
