@@ -110,13 +110,24 @@ jobs:
       - test-ios
     runs-on: macos-15
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Environment
         uses: ./.github/actions/setup-base
+
+      - name: Read Core Version
+        id: core-version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^LIB_CORE_VERSION=//p' gradle.properties)"
+          if [[ -z "$version" ]]; then
+            echo "LIB_CORE_VERSION is not set in gradle.properties" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         run: ./gradlew :core:publishAndReleaseToMavenCentral
@@ -127,6 +138,12 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVENCENTRALPASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_SECRETKEYRING }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.core-version.outputs.version }}
+        run: gh release create "$VERSION" --target "$GITHUB_SHA" --title "Core $VERSION" --generate-notes
 
   release-platform-jvm-windows:
     if: ${{ inputs.RELEASE_LIB_PLATFORM_WINDOWS }}
