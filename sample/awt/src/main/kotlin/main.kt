@@ -58,6 +58,7 @@ private class BrowserPane(
                 isLoading = true
                 progressBar.value = 0
                 progressBar.isVisible = true
+                urlField.text = it
                 updateNavButtons()
             }
         }
@@ -203,7 +204,7 @@ fun main() = SwingUtilities.invokeLater {
         layout = GridLayout(1, 2, 0, 0)
     }
 
-    val initializeUrl = "https://www.baidu.com"
+    val initializeUrl = "https://app-api.pixiv.net/web/v1/login?code_challenge=qM6bcr4aKuf3-F7QdVO96E2JfeyY3cGyEe3Htu9Pr78&code_challenge_method=S256&client=pixiv-android"
     val leftPane = BrowserPane("左侧 WebView", initializeUrl)
     val rightPane = BrowserPane("右侧 WebView", initializeUrl, webViewInitiallyActive = false)
 

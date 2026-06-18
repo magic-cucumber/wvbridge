@@ -39,7 +39,13 @@ public interface WebViewNavigator {
     public fun goForward(url: String): Boolean
 
     /**
-     * Reloads the current page.
+     * Reloads the most recently loaded page.
+     *
+     * This operation delegates to the native WebView's reload behavior. If the most recent
+     * navigation failed, [WebViewState.url] may contain that failed URL while this method reloads
+     * the last page that loaded successfully. To retry the most recently attempted URL instead,
+     * call [loadUrl] with [WebViewState.url]. After a successful navigation, both approaches reload
+     * the same URL.
      */
     public fun refresh()
 

@@ -9,8 +9,8 @@ import androidx.compose.runtime.setValue
  * Common state holders for [WebView].
  *
  * The public state surface is intentionally small:
- * - [WebViewState.url] mirrors the current top-level document URL and is a good fit for address bars.
- *   It also works with custom URL schemes as long as the underlying native engine accepts them.
+ * - [WebViewState.url] records the most recent top-level URL the WebView attempted to load and is a
+ *   good fit for address bars, including when that navigation fails.
  * - [WebViewState.state] exposes the current native readiness and page-loading lifecycle as [LoadingState].
  * - [WebViewState.navigator] exposes imperative navigation operations.
  *
@@ -37,11 +37,12 @@ import androidx.compose.runtime.setValue
 public abstract class WebViewState<T : AutoCloseable> internal constructor(internal val instance: T) :
     AutoCloseable by instance {
     /**
-     * The current top-level URL shown by the native WebView.
+     * The most recent top-level URL the WebView attempted to load.
      *
-     * This property is designed to drive address bars and similar UI. It is updated by navigation,
-     * redirects, and history traversal. Custom URL schemes are supported when the underlying native
-     * engine supports them.
+     * This property is designed to drive address bars and similar UI. It is updated when a
+     * navigation is attempted, including redirects, history traversal, and custom URL schemes. The
+     * value remains the attempted URL whether the navigation succeeds or fails, so it may differ
+     * from the most recently loaded page.
      */
     public var url: String by mutableStateOf("")
         internal set
