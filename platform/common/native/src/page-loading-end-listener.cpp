@@ -1,0 +1,44 @@
+#include "listener_support.h"
+
+#include "wvbridge/java_runtime.h"
+#include "wvbridge/native_bridge.h"
+
+namespace {
+JvmListener g_page_loading_end_listener;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_top_kagg886_wvbridge_internal_listener_NativeBridge_setPageLoadingEndListener(
+    JNIEnv* env,
+    jobject,
+    jobject listener
+) {
+    set_jvm_listener(
+        env,
+        g_page_loading_end_listener,
+        listener,
+        "onPageLoadingEnd",
+        "(JZLjava/lang/String;)V"
+    );
+}
+
+void notify_page_loading_end_to_jvm(
+    jlong pointer,
+    jboolean success,
+    wvbridge_native_string reason
+) {
+    int attached = 0;
+    JNIEnv* env = java_runtime_get_env(&attached);
+    if (env == nullptr) return;
+
+    jmethodID method = nullptr;
+    jobject listener = acquire_jvm_listener(env, g_page_loading_end_listener, &method);
+    if (listener != nullptr) {
+        jstring value = reason != nullptr ? new_jvm_string(env, reason) : nullptr;
+        env->CallVoidMethod(listener, method, pointer, success, value);
+        clear_jni_exception(env);
+        if (value != nullptr) env->DeleteLocalRef(value);
+        env->DeleteLocalRef(listener);
+    }
+    java_runtime_detach_env(attached);
+}

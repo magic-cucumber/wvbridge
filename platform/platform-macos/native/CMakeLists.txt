@@ -35,12 +35,10 @@ set(JAWT_LIBRARY ${JAVA_HOME}/lib/libjawt.dylib)
 
 # 源文件
 set(SOURCES
-        src/history_listener.mm
         src/libs.mm
-        src/page_loading.mm
         src/utils.mm
-        src/url_listener.mm
         src/ui_delegate.mm
+        src/webview_events.mm
 )
 
 # 创建共享库

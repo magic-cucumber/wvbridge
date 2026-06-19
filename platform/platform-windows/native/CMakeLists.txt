@@ -117,12 +117,10 @@ endif()
 set(WEBVIEW2_LOADER_LIB "${WEBVIEW2_LOADER_STATIC_LIB}")
 
 set(SOURCES
-    src/history_events.cpp
     src/libs.cpp
-    src/page_loading_events.cpp
     src/thread.cpp
-    src/url_events.cpp
     src/utils.cpp
+    src/webview_events.cpp
 )
 
 add_library(wvbridge SHARED ${SOURCES})

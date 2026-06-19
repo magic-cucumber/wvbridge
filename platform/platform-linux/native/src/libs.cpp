@@ -14,10 +14,7 @@
 #include <gdk/gdkx.h>
 
 #include "gtk.h"
-#include "history_listener.h"
-#include "page_loading.h"
-#include "url_listener.h"
-#include "navigation.h"
+#include "webview_events.h"
 #include "utils.h"
 
 struct WebViewContext {
@@ -33,17 +30,7 @@ struct WebViewContext {
     GtkWidget *window = nullptr;
     WebKitWebView *webview = nullptr;
 
-    // URL 变化监听（JNI listener + WebKit notify::uri 信号）
-    wvbridge::URLListenerState* url_listener = nullptr;
-
-    // 导航策略拦截（WebKit decide-policy 信号）
-    wvbridge::NavigationState* navigation = nullptr;
-
-    // 页面加载监听（开始/进度/结束）
-    wvbridge::PageLoadingState* page_loading = nullptr;
-
-    // 前进/后退状态监听
-    wvbridge::HistoryListenerState* history_listener = nullptr;
+    wvbridge::WebViewEvents* events = nullptr;
 
     // 关闭流程开始后置 true；用于拒绝后续 update 排队，避免 close0 后异步访问已销毁对象。
     std::atomic_bool closing{false};
@@ -124,19 +111,8 @@ namespace {
             ctx->webview_button_press_handler_id = 0;
         }
 
-        if (ctx->webview && ctx->url_listener) {
-            // best-effort：尽早断开信号，避免销毁过程中触发回调。
-            wvbridge::url_listener_uninstall(ctx->webview, ctx->url_listener);
-        }
-        if (ctx->webview && ctx->navigation) {
-            wvbridge::navigation_uninstall(ctx->webview, ctx->navigation);
-        }
-        if (ctx->webview && ctx->page_loading) {
-            wvbridge::page_loading_uninstall(ctx->webview, ctx->page_loading);
-        }
-        if (ctx->webview && ctx->history_listener) {
-            wvbridge::history_listener_uninstall(ctx->webview, ctx->history_listener);
-        }
+        wvbridge::webview_events_destroy(ctx->events);
+        ctx->events = nullptr;
 
         // GtkWindow 销毁后，会连带销毁子树（WebView）。
         if (ctx->window) {
@@ -274,10 +250,7 @@ API_EXPORT(jlong, initAndAttach) {
     // 2) 在 GTK 线程同步创建 WebView，并 reparent 到 AWT 宿主窗口
     auto *ctx = new WebViewContext();
     ctx->parent_xid = parent_xid;
-    ctx->url_listener = wvbridge::url_listener_state_new(env);
-    ctx->navigation = wvbridge::navigation_state_new();
-    ctx->page_loading = wvbridge::page_loading_state_new(env);
-    ctx->history_listener = wvbridge::history_listener_state_new(env);
+    const jlong pointer = reinterpret_cast<jlong>(ctx);
 
     bool ok = true;
 
@@ -330,15 +303,7 @@ API_EXPORT(jlong, initAndAttach) {
             ctx
         );
 
-        // 安装 URL 变化监听信号（notify::uri）。listener 可稍后由 setURLChangeListener() 设置。
-        wvbridge::url_listener_install(ctx->webview, ctx->url_listener, &ctx->closing);
-
-        // 安装导航策略拦截（decide-policy）。将新窗口请求重定向到当前 WebView。
-        wvbridge::navigation_install(ctx->webview, ctx->navigation, &ctx->closing);
-
-        // 安装页面加载生命周期监听。listener 可稍后由 setPageLoading*Listener() 设置。
-        wvbridge::page_loading_install(ctx->webview, ctx->page_loading, &ctx->closing);
-        wvbridge::history_listener_install(ctx->webview, ctx->history_listener, &ctx->closing);
+        ctx->events = wvbridge::webview_events_create(ctx->webview, pointer, &ctx->closing);
         // 注意：不要用 gtk_widget_set_size_request() 强行指定 WebView 尺寸。
         // size_request 使用“逻辑像素”，在 HiDPI(scale factor>1) 下会导致实际渲染尺寸被放大，
         // 从而出现 WebView 比 AWT 宿主窗口更大、被裁剪且无法滚动的问题。
@@ -367,14 +332,6 @@ API_EXPORT(jlong, initAndAttach) {
 
     if (!ok) {
         wvbridge::gtk_run_on_thread_sync([&] { destroy_ctx_on_gtk_thread(ctx); });
-        wvbridge::url_listener_state_destroy(ctx->url_listener);
-        ctx->url_listener = nullptr;
-        wvbridge::navigation_state_destroy(ctx->navigation);
-        ctx->navigation = nullptr;
-        wvbridge::page_loading_state_destroy(ctx->page_loading);
-        ctx->page_loading = nullptr;
-        wvbridge::history_listener_state_destroy(ctx->history_listener);
-        ctx->history_listener = nullptr;
         delete ctx;
         throw_jni_exception(env, "java/lang/RuntimeException", "Init WebView/attach to AWT failed (X11 only)");
         return 0;
@@ -468,18 +425,6 @@ API_EXPORT(void, close0, jlong handle) {
             g_main_context_iteration(nullptr, FALSE);
         }
     });
-
-    wvbridge::url_listener_state_destroy(ctx->url_listener);
-    ctx->url_listener = nullptr;
-
-    wvbridge::navigation_state_destroy(ctx->navigation);
-    ctx->navigation = nullptr;
-
-    wvbridge::page_loading_state_destroy(ctx->page_loading);
-    ctx->page_loading = nullptr;
-
-    wvbridge::history_listener_state_destroy(ctx->history_listener);
-    ctx->history_listener = nullptr;
 
     delete ctx;
 }
@@ -651,84 +596,4 @@ API_EXPORT(jboolean, goForward, jlong handle) {
         return JNI_FALSE;
     }
     return can_go_forward_after ? JNI_TRUE : JNI_FALSE;
-}
-
-API_EXPORT(void, setPageLoadingStartListener, jlong handle, jobject listener) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    wvbridge::page_loading_set_start_listener(env, ctx->page_loading, listener);
-}
-
-API_EXPORT(void, setPageLoadingProgressListener, jlong handle, jobject listener) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    wvbridge::page_loading_set_progress_listener(env, ctx->page_loading, listener);
-}
-
-API_EXPORT(void, setPageLoadingEndListener, jlong handle, jobject listener) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    wvbridge::page_loading_set_end_listener(env, ctx->page_loading, listener);
-}
-
-//private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
-API_EXPORT(void, setURLChangeListener, jlong handle, jobject handler) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    // handler 允许为 null：表示不监听。
-    if (!ctx->url_listener) {
-        ctx->url_listener = wvbridge::url_listener_state_new(env);
-    }
-
-    wvbridge::url_listener_set_listener(env, ctx->url_listener, handler);
-}
-
-API_EXPORT(void, setCanGoBackChangeListener, jlong handle, jobject handler) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    wvbridge::history_listener_set_can_go_back_listener(env, ctx->history_listener, handler);
-    wvbridge::gtk_run_on_thread_sync([&] {
-        if (!ctx || ctx->closing.load(std::memory_order_acquire) || !ctx->webview) return;
-        wvbridge::history_listener_emit_current(ctx->webview, ctx->history_listener);
-    });
-}
-
-API_EXPORT(void, setCanGoForwardChangeListener, jlong handle, jobject handler) {
-    if (handle == 0) {
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) return;
-
-    wvbridge::history_listener_set_can_go_forward_listener(env, ctx->history_listener, handler);
-    wvbridge::gtk_run_on_thread_sync([&] {
-        if (!ctx || ctx->closing.load(std::memory_order_acquire) || !ctx->webview) return;
-        wvbridge::history_listener_emit_current(ctx->webview, ctx->history_listener);
-    });
 }

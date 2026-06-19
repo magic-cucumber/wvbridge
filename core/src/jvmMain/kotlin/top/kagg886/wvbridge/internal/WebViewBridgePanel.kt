@@ -7,12 +7,13 @@ import java.awt.Point
 import java.awt.event.*
 import java.io.File
 import java.nio.file.Files
-import java.util.function.Consumer
-import java.awt.Window
+import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.locks.ReentrantLock
 import java.util.function.BiConsumer
+import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
+import top.kagg886.wvbridge.internal.listener.NativeBridge
 
 /**
  * WebView 页面加载生命周期说明：
@@ -39,15 +40,15 @@ import kotlin.concurrent.withLock
  * - 一次用户操作（如点击）可能触发多个“start -> progress* -> end”完整周期（跳转 + 重定向）。
  */
 internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
-    private var handle = 0L
+    @Volatile
+    internal var handle = 0L
+        private set
 
     init {
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
             isFocusable = true
             Runtime.getRuntime().addShutdownHook(Thread {
-                if (handle != 0L) {
-                    close0(handle)
-                }
+                close()
             })
             addFocusListener(object : FocusAdapter() {
                 override fun focusGained(e: FocusEvent) {
@@ -91,12 +92,12 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         g.drawRect(0, 0, width - 1, height - 1)
     }
 
-    private val urlChangeListener = mutableSetOf<Consumer<String>>()
-    private val pageLoadingStartListener = mutableSetOf<Consumer<String>>()
-    private val pageLoadingProgressListener = mutableSetOf<Consumer<Float>>()
-    private val pageLoadingEndListener = mutableSetOf<BiConsumer<Boolean, String?>>()
-    private val canGoBackChangeListener = mutableSetOf<Consumer<Boolean>>()
-    private val canGoForwardChangeListener = mutableSetOf<Consumer<Boolean>>()
+    internal val urlChangeListener = CopyOnWriteArraySet<Consumer<String>>()
+    internal val pageLoadingStartListener = CopyOnWriteArraySet<Consumer<String>>()
+    internal val pageLoadingProgressListener = CopyOnWriteArraySet<Consumer<Float>>()
+    internal val pageLoadingEndListener = CopyOnWriteArraySet<BiConsumer<Boolean, String?>>()
+    internal val canGoBackChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
+    internal val canGoForwardChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
 
     public fun addPageLoadingStartListener(handle: Consumer<String>): Unit =
         check(pageLoadingStartListener.add(handle)) {
@@ -169,38 +170,8 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
 
         SwingUtilities.invokeLater {
             handle = initAndAttach()
+            NativeBridge.register(this)
             initialize()
-            setPageLoadingStartListener(handle) { url ->
-                pageLoadingStartListener.forEach {
-                    it.accept(url)
-                }
-            }
-            setPageLoadingProgressListener(handle) { progress ->
-                pageLoadingProgressListener.forEach {
-                    it.accept(progress)
-                }
-            }
-            setPageLoadingEndListener(handle) { success, reason ->
-                pageLoadingEndListener.forEach {
-                    it.accept(success, reason)
-                }
-            }
-            setURLChangeListener(handle) { url ->
-                if (urlChangeListener.isEmpty()) return@setURLChangeListener
-                urlChangeListener.forEach {
-                    it.accept(url)
-                }
-            }
-            setCanGoBackChangeListener(handle) { canGoBack ->
-                canGoBackChangeListener.forEach {
-                    it.accept(canGoBack)
-                }
-            }
-            setCanGoForwardChangeListener(handle) { canGoForward ->
-                canGoForwardChangeListener.forEach {
-                    it.accept(canGoForward)
-                }
-            }
             SwingUtilities.invokeLater {
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
                 if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
@@ -222,8 +193,9 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     override fun close(): Unit = closeLock.withLock {
         val handle = handle
         if (handle == 0L) return@withLock
+        NativeBridge.unregister(this)
+        this.handle = 0L
         close0(handle)
-        this.handle = 0
     }
 
     // --------------init and close--------------
@@ -231,15 +203,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
     private external fun requestFocus0(webview: Long)
     private external fun close0(webview: Long)
-
-    // --------------- listener ----------------
-
-    private external fun setPageLoadingStartListener(webview: Long, consumer: Consumer<String>)
-    private external fun setPageLoadingProgressListener(webview: Long, consumer: Consumer<Float>)
-    private external fun setPageLoadingEndListener(webview: Long, consumer: BiConsumer<Boolean, String?>)
-    private external fun setURLChangeListener(webview: Long, handler: Consumer<String>)
-    private external fun setCanGoBackChangeListener(webview: Long, handler: Consumer<Boolean>)
-    private external fun setCanGoForwardChangeListener(webview: Long, handler: Consumer<Boolean>)
 
     // ------------navigate function------------
     private external fun loadUrl(webview: Long, url: String)
