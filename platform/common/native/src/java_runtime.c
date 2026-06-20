@@ -2,9 +2,18 @@
 
 static JavaVM* g_java_vm = NULL;
 
+void listener_support_on_load(JNIEnv* env);
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     (void) reserved;
     g_java_vm = vm;
+
+    JNIEnv* env = NULL;
+    if ((*vm)->GetEnv(vm, (void**) &env, JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_ERR;
+    }
+    listener_support_on_load(env);
+
     return JNI_VERSION_1_6;
 }
 

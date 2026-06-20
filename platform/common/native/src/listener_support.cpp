@@ -12,6 +12,12 @@
 #if !defined(_WIN32)
 namespace {
 
+constexpr const char* NATIVE_BRIDGE_CLASS_NAME =
+    "top/kagg886/wvbridge/internal/listener/NativeBridge";
+
+std::mutex g_native_bridge_class_mutex;
+jclass g_native_bridge_class = nullptr;
+
 std::u16string utf8_to_utf16(const char* value) {
     const auto* bytes = reinterpret_cast<const unsigned char*>(value);
     std::u16string result;
@@ -73,6 +79,16 @@ std::u16string utf8_to_utf16(const char* value) {
 }
 
 } // namespace
+#else
+namespace {
+
+constexpr const char* NATIVE_BRIDGE_CLASS_NAME =
+    "top/kagg886/wvbridge/internal/listener/NativeBridge";
+
+std::mutex g_native_bridge_class_mutex;
+jclass g_native_bridge_class = nullptr;
+
+} // namespace
 #endif
 
 void clear_jni_exception(JNIEnv* env) {
@@ -81,61 +97,62 @@ void clear_jni_exception(JNIEnv* env) {
     }
 }
 
-void set_jvm_listener(
-    JNIEnv* env,
-    JvmListener& listener,
-    jobject callback,
-    const char* method_name,
-    const char* signature
-) {
-    if (env == nullptr || callback == nullptr || method_name == nullptr || signature == nullptr) {
-        return;
-    }
+namespace {
 
-    jclass callback_class = env->GetObjectClass(callback);
-    if (callback_class == nullptr) {
-        clear_jni_exception(env);
-        return;
-    }
+jclass get_native_bridge_class(JNIEnv* env) {
+    if (env == nullptr) return nullptr;
 
-    jmethodID method = env->GetMethodID(callback_class, method_name, signature);
-    env->DeleteLocalRef(callback_class);
-    if (method == nullptr) {
-        clear_jni_exception(env);
-        return;
-    }
+    std::lock_guard<std::mutex> lock(g_native_bridge_class_mutex);
+    if (g_native_bridge_class != nullptr) return g_native_bridge_class;
 
-    jobject global_callback = env->NewGlobalRef(callback);
-    if (global_callback == nullptr) {
-        clear_jni_exception(env);
-        return;
-    }
-
-    jobject old_callback = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(listener.mutex);
-        old_callback = listener.callback;
-        listener.callback = global_callback;
-        listener.method = method;
-    }
-    if (old_callback != nullptr) {
-        env->DeleteGlobalRef(old_callback);
-    }
-}
-
-jobject acquire_jvm_listener(JNIEnv* env, JvmListener& listener, jmethodID* method) {
-    if (env == nullptr || method == nullptr) return nullptr;
-
-    std::lock_guard<std::mutex> lock(listener.mutex);
-    if (listener.callback == nullptr || listener.method == nullptr) return nullptr;
-
-    jobject callback = env->NewLocalRef(listener.callback);
-    if (callback == nullptr) {
+    jclass local_class = env->FindClass(NATIVE_BRIDGE_CLASS_NAME);
+    if (local_class == nullptr) {
         clear_jni_exception(env);
         return nullptr;
     }
-    *method = listener.method;
-    return callback;
+
+    g_native_bridge_class = static_cast<jclass>(env->NewGlobalRef(local_class));
+    env->DeleteLocalRef(local_class);
+    if (g_native_bridge_class == nullptr) {
+        clear_jni_exception(env);
+    }
+    return g_native_bridge_class;
+}
+
+} // namespace
+
+extern "C" void listener_support_on_load(JNIEnv* env) {
+    (void) get_native_bridge_class(env);
+}
+
+jmethodID acquire_native_bridge_callback(
+    JNIEnv* env,
+    JvmStaticCallback& callback,
+    const char* method_name,
+    const char* signature,
+    jclass* callback_class
+) {
+    if (callback_class != nullptr) {
+        *callback_class = nullptr;
+    }
+    if (env == nullptr || method_name == nullptr || signature == nullptr || callback_class == nullptr) {
+        return nullptr;
+    }
+
+    jclass bridge_class = get_native_bridge_class(env);
+    if (bridge_class == nullptr) return nullptr;
+
+    std::lock_guard<std::mutex> lock(callback.mutex);
+    if (callback.method == nullptr) {
+        callback.method = env->GetStaticMethodID(bridge_class, method_name, signature);
+        if (callback.method == nullptr) {
+            clear_jni_exception(env);
+            return nullptr;
+        }
+    }
+
+    *callback_class = bridge_class;
+    return callback.method;
 }
 
 #if !defined(_WIN32)

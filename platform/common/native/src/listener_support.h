@@ -4,21 +4,20 @@
 
 #include <mutex>
 
-struct JvmListener {
+struct JvmStaticCallback {
     std::mutex mutex;
-    jobject callback = nullptr;
     jmethodID method = nullptr;
 };
 
-void set_jvm_listener(
-    JNIEnv* env,
-    JvmListener& listener,
-    jobject callback,
-    const char* method_name,
-    const char* signature
-);
+extern "C" void listener_support_on_load(JNIEnv* env);
 
-jobject acquire_jvm_listener(JNIEnv* env, JvmListener& listener, jmethodID* method);
+jmethodID acquire_native_bridge_callback(
+    JNIEnv* env,
+    JvmStaticCallback& callback,
+    const char* method_name,
+    const char* signature,
+    jclass* callback_class
+);
 
 #if defined(_WIN32)
 jstring new_jvm_string(JNIEnv* env, const wchar_t* value);
