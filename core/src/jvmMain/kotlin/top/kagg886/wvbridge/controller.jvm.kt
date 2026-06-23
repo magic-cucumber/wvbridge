@@ -37,7 +37,8 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
     }
 
     private fun String?.toJavaScriptValue(): JavaScriptBridge.Value = when (this) {
-        null, "null" -> JavaScriptBridge.Value.Null
+        null -> JavaScriptBridge.Value.Undefined
+        "null" -> JavaScriptBridge.Value.Null
         "undefined" -> JavaScriptBridge.Value.Undefined
         else -> JavaScriptBridge.Value.ScriptObject(this)
     }

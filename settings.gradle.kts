@@ -39,6 +39,7 @@ include(":platform:platform-linux")
 include(":platform:platform-macos")
 
 include(":sample:awt")
+include(":sample:jsbridge")
 include(":sample:compose:sharedUI")
 include(":sample:compose:androidApp")
 include(":sample:compose:desktopApp")

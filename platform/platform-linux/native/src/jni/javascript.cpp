@@ -55,6 +55,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
 
     struct Result {
         bool ok = false;
+        bool has_value = false;
         std::string value;
         std::string error;
     };
@@ -64,7 +65,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
 
     wvbridge::gtk_run_on_thread_sync([ctx, source, completion] {
         if (!ctx->webview) {
-            completion->set_value(Result{false, "", "webview is not available"});
+            completion->set_value(Result{false, false, "", "webview is not available"});
             return;
         }
 
@@ -88,22 +89,33 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
                 if (error) {
                     std::string message = error->message ? error->message : "WebKitGTK JavaScript evaluation failed";
                     g_error_free(error);
-                    completion->set_value(Result{false, "", message});
+                    completion->set_value(Result{false, false, "", message});
                     return;
                 }
 
                 if (!jsResult) {
-                    completion->set_value(Result{true, "", ""});
+                    completion->set_value(Result{true, false, "", ""});
                     return;
                 }
 
                 JSCValue *value = webkit_javascript_result_get_js_value(jsResult);
+                if (!value || jsc_value_is_undefined(value)) {
+                    webkit_javascript_result_unref(jsResult);
+                    completion->set_value(Result{true, false, "", ""});
+                    return;
+                }
+                if (jsc_value_is_null(value)) {
+                    webkit_javascript_result_unref(jsResult);
+                    completion->set_value(Result{true, true, "null", ""});
+                    return;
+                }
+
                 gchar *stringValue = value ? jsc_value_to_string(value) : nullptr;
                 std::string output = stringValue ? stringValue : "";
                 if (stringValue) g_free(stringValue);
                 webkit_javascript_result_unref(jsResult);
 
-                completion->set_value(Result{true, output, ""});
+                completion->set_value(Result{true, true, output, ""});
             },
             completionPtr
         );
@@ -114,7 +126,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
         throw_jni_exception(env, "java/lang/RuntimeException", result.error.c_str());
         return nullptr;
     }
-    if (result.value.empty()) return nullptr;
+    if (!result.has_value) return nullptr;
     return env->NewStringUTF(result.value.c_str());
 }
 

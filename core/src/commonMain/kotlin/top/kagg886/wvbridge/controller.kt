@@ -64,6 +64,12 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
      */
     public abstract val navigator: WebViewNavigator
 
+    /**
+     * JavaScript bridge bound to the same native WebView instance.
+     *
+     * Use this bridge to evaluate scripts in the current page or to register document-start hooks
+     * that will run before page scripts on subsequent navigations.
+     */
     public abstract val bridge: JavaScriptBridge
 }
 

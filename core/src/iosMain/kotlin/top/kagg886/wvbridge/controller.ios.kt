@@ -3,6 +3,7 @@ package top.kagg886.wvbridge
 import androidx.compose.runtime.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
+import platform.Foundation.NSNull
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.WebKit.WKUserScript
@@ -78,7 +79,8 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
     }
 
     private fun Any?.toJavaScriptValue(): JavaScriptBridge.Value = when (this) {
-        null -> JavaScriptBridge.Value.Null
+        null -> JavaScriptBridge.Value.Undefined
+        is NSNull -> JavaScriptBridge.Value.Null
         else -> JavaScriptBridge.Value.ScriptObject(toString())
     }
 
