@@ -22,6 +22,7 @@ struct WebViewEvents {
     gulong load_failed = 0;
     gulong history_changed = 0;
     gulong decide_policy = 0;
+    gulong web_process_terminated = 0;
 
     bool last_load_failed = false;
     std::string last_error_reason;
@@ -130,6 +131,32 @@ gboolean load_failed_cb(
     return FALSE;
 }
 
+void web_process_terminated_cb(
+    WebKitWebView*,
+    WebKitWebProcessTerminationReason reason,
+    gpointer user_data
+) {
+    auto* events = static_cast<WebViewEvents*>(user_data);
+    if (!events || is_closing(events)) return;
+
+    const char* cause = nullptr;
+    switch (reason) {
+        case WEBKIT_WEB_PROCESS_CRASHED:
+            cause = "WEBKIT_WEB_PROCESS_CRASHED";
+            break;
+        case WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT:
+            cause = "WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT";
+            break;
+        case WEBKIT_WEB_PROCESS_TERMINATED_BY_API:
+            cause = nullptr;
+            break;
+        default:
+            cause = "WEBKIT_WEB_PROCESS_TERMINATION_REASON_UNKNOWN";
+            break;
+    }
+    notify_webview_fatal_error_to_jvm(events->pointer, cause);
+}
+
 void history_changed_cb(
     WebKitBackForwardList*,
     WebKitBackForwardListItem*,
@@ -197,6 +224,8 @@ WebViewEvents* webview_events_create(
         g_signal_connect(webview, "load-failed", G_CALLBACK(load_failed_cb), events);
     events->decide_policy =
         g_signal_connect(webview, "decide-policy", G_CALLBACK(decide_policy_cb), events);
+    events->web_process_terminated =
+        g_signal_connect(webview, "web-process-terminated", G_CALLBACK(web_process_terminated_cb), events);
 
     if (events->back_forward_list) {
         events->history_changed = g_signal_connect(
@@ -219,7 +248,8 @@ void webview_events_destroy(WebViewEvents* events) {
             events->load_changed,
             events->progress_changed,
             events->load_failed,
-            events->decide_policy
+            events->decide_policy,
+            events->web_process_terminated
         };
         for (gulong handler : handlers) {
             if (handler != 0) g_signal_handler_disconnect(events->webview, handler);

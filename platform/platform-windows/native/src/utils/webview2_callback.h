@@ -55,6 +55,11 @@ inline const IID &webview2_handler_iid<ICoreWebView2NewWindowRequestedEventHandl
 }
 
 template<>
+inline const IID &webview2_handler_iid<ICoreWebView2ProcessFailedEventHandler>() {
+    return IID_ICoreWebView2ProcessFailedEventHandler;
+}
+
+template<>
 inline const IID &webview2_handler_iid<ICoreWebView2ExecuteScriptCompletedHandler>() {
     return IID_ICoreWebView2ExecuteScriptCompletedHandler;
 }

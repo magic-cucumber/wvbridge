@@ -85,6 +85,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         point.translate(-insets.left, -insets.top)
         return point
     }
+
     override fun paint(g: Graphics?) {
         super.paint(g)
         if (g == null) return
@@ -98,6 +99,8 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     internal val pageLoadingEndListener = CopyOnWriteArraySet<BiConsumer<Boolean, String?>>()
     internal val canGoBackChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
     internal val canGoForwardChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
+
+    internal val closeListener = CopyOnWriteArraySet<Consumer<String?>>()
 
     public fun addPageLoadingStartListener(handle: Consumer<String>): Unit =
         check(pageLoadingStartListener.add(handle)) {
@@ -160,6 +163,17 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     public fun addProgressListener(consumer: Consumer<Float>): Unit = addPageLoadingProgressListener(consumer)
     public fun removeProgressListener(consumer: Consumer<Float>): Unit = removePageLoadingProgressListener(consumer)
 
+
+    public fun addWebViewCloseListener(handle: Consumer<String?>): Unit =
+        check(closeListener.add(handle)) {
+            "webview close listener: [$handle] already added"
+        }
+
+    public fun removeWebViewCloseListener(handle: Consumer<String?>): Unit =
+        check(closeListener.remove(handle)) {
+            "webview close listener: [$handle] not yet exists"
+        }
+
     override fun removeNotify() {
         super.removeNotify()
         close()
@@ -193,12 +207,15 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     public fun unregisterDocumentStartHook(hookId: Long): Unit = unregisterDocumentStartHook(handle, hookId)
 
     private val closeLock = ReentrantLock()
-    override fun close(): Unit = closeLock.withLock {
+    override fun close(): Unit = close(null)
+
+    internal fun close(cause: String?) = closeLock.withLock {
         val handle = handle
         if (handle == 0L) return@withLock
         NativeBridge.unregister(this)
         this.handle = 0L
         close0(handle)
+        closeListener.forEach { it.accept(cause) }
     }
 
     // --------------init and close--------------

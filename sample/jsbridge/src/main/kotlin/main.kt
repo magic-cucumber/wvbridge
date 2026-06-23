@@ -119,14 +119,9 @@ private class JavaScriptBridgeDemoPane : JPanel(BorderLayout(8, 8)) {
      */
     private fun destroyBrowserInstance() {
         val panel = webView ?: return
-        removeHook()
-        remove(panel)
+        clearDocumentStartHook(panel, unregisterNative = true)
+        detachBrowserInstance(panel, "browser instance destroyed")
         panel.close()
-        webView = null
-        log("browser instance destroyed")
-        revalidate()
-        repaint()
-        updateMenuState()
     }
 
     private fun toggleBrowserInstance() {
@@ -141,6 +136,21 @@ private class JavaScriptBridgeDemoPane : JPanel(BorderLayout(8, 8)) {
      * Wires native page events into the sample log area.
      */
     private fun installListeners(panel: WebViewBridgePanel) {
+        panel.addWebViewCloseListener { cause ->
+            SwingUtilities.invokeLater {
+                if (webView !== panel) return@invokeLater
+
+                if (cause != null) {
+                    val message = "webview closed by fatal error: $cause"
+                    log(message)
+                    System.err.println(message)
+                } else {
+                    log("webview closed")
+                }
+
+                detachClosedBrowserInstance(panel)
+            }
+        }
         panel.addPageLoadingStartListener {
             SwingUtilities.invokeLater {
                 urlField.text = it
@@ -158,6 +168,22 @@ private class JavaScriptBridgeDemoPane : JPanel(BorderLayout(8, 8)) {
                 log("url changed: $it")
             }
         }
+    }
+
+    private fun detachClosedBrowserInstance(panel: WebViewBridgePanel) {
+        clearDocumentStartHook(panel = null, unregisterNative = false)
+        detachBrowserInstance(panel, "browser instance removed")
+    }
+
+    private fun detachBrowserInstance(panel: WebViewBridgePanel, reason: String) {
+        if (webView !== panel) return
+
+        remove(panel)
+        webView = null
+        log(reason)
+        revalidate()
+        repaint()
+        updateMenuState()
     }
 
     /**
@@ -192,6 +218,17 @@ private class JavaScriptBridgeDemoPane : JPanel(BorderLayout(8, 8)) {
         }
         log("document-start hook removed: $hookId")
         updateMenuState()
+    }
+
+    private fun clearDocumentStartHook(panel: WebViewBridgePanel?, unregisterNative: Boolean) {
+        val hookId = documentStartHookId ?: return
+        documentStartHookId = null
+
+        if (unregisterNative && panel != null) {
+            runCatching { panel.unregisterDocumentStartHook(hookId) }
+                .onFailure { log("remove hook failed: ${it.message ?: it::class.java.name}") }
+        }
+        log("document-start hook removed: $hookId")
     }
 
     /**

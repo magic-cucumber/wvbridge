@@ -2,6 +2,7 @@ package top.kagg886.wvbridge.internal.listener
 
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.util.concurrent.ConcurrentHashMap
+import javax.swing.SwingUtilities
 
 internal object NativeBridge {
     private val panels = ConcurrentHashMap.newKeySet<WebViewBridgePanel>()
@@ -46,5 +47,15 @@ internal object NativeBridge {
     @JvmStatic
     private fun onCanGoForwardChangeCallback(webview: Long, canGoForward: Boolean) {
         findPanel(webview)?.canGoForwardChangeListener?.forEach { it.accept(canGoForward) }
+    }
+
+    @JvmStatic
+    private fun onWebViewFatalErrorOccurred(webview: Long, cause: String?) {
+        val panel = findPanel(webview) ?: return
+        SwingUtilities.invokeLater {
+            if (findPanel(webview) === panel) {
+                panel.close(cause)
+            }
+        }
     }
 }

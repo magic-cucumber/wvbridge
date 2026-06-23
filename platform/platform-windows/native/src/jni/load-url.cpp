@@ -22,8 +22,21 @@ API_EXPORT(void, loadUrl, jlong handle, jstring url) {
         wurl = L"about:blank";
     }
 
-    webview2_thread_run_sync(ctx->thread, [ctx, wurl] {
-        if (!ctx || ctx->closing.load(std::memory_order_acquire) || !ctx->webview) return;
-        ctx->webview->Navigate(wurl.c_str());
+    HRESULT hr = S_OK;
+    webview2_thread_run_sync(ctx->thread, [ctx, wurl, &hr] {
+        if (!ctx || ctx->closing.load(std::memory_order_acquire)) {
+            hr = E_FAIL;
+            return;
+        }
+        if (!ctx->webview) {
+            hr = E_FAIL;
+            return;
+        }
+        hr = ctx->webview->Navigate(wurl.c_str());
     });
+
+    if (FAILED(hr)) {
+        std::string message = "WebView2 Navigate failed [HRESULT=" + format_hresult(hr) + "]";
+        throw_jni_exception(env, "java/lang/RuntimeException", message.c_str());
+    }
 }

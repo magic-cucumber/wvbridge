@@ -69,7 +69,7 @@ std::string trim_message(std::wstring message) {
     return wstring_to_utf8(message);
 }
 
-std::string format_hresult(HRESULT hr) {
+std::string format_hresult_code(HRESULT hr) {
     std::ostringstream oss;
     oss << "0x"
         << std::uppercase
@@ -80,13 +80,89 @@ std::string format_hresult(HRESULT hr) {
     return oss.str();
 }
 
+const char *known_hresult_name(HRESULT hr) {
+    switch (hr) {
+        case S_OK:
+            return "S_OK";
+        case S_FALSE:
+            return "S_FALSE";
+        case E_ABORT:
+            return "E_ABORT";
+        case E_ACCESSDENIED:
+            return "E_ACCESSDENIED";
+        case E_FAIL:
+            return "E_FAIL";
+        case E_HANDLE:
+            return "E_HANDLE";
+        case E_INVALIDARG:
+            return "E_INVALIDARG";
+        case E_NOINTERFACE:
+            return "E_NOINTERFACE";
+        case E_NOTIMPL:
+            return "E_NOTIMPL";
+        case E_OUTOFMEMORY:
+            return "E_OUTOFMEMORY";
+        case E_POINTER:
+            return "E_POINTER";
+        case E_UNEXPECTED:
+            return "E_UNEXPECTED";
+        case HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND):
+            return "ERROR_FILE_NOT_FOUND";
+        case HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND):
+            return "ERROR_PATH_NOT_FOUND";
+        case HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND):
+            return "ERROR_MOD_NOT_FOUND";
+        case HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND):
+            return "ERROR_PROC_NOT_FOUND";
+        case HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS):
+            return "ERROR_ALREADY_EXISTS";
+        case HRESULT_FROM_WIN32(ERROR_FILE_EXISTS):
+            return "ERROR_FILE_EXISTS";
+        case HRESULT_FROM_WIN32(ERROR_BUSY):
+            return "ERROR_BUSY";
+        case HRESULT_FROM_WIN32(ERROR_OPERATION_ABORTED):
+            return "ERROR_OPERATION_ABORTED";
+        case HRESULT_FROM_WIN32(ERROR_CANCELLED):
+            return "ERROR_CANCELLED";
+        case HRESULT_FROM_WIN32(ERROR_TIMEOUT):
+            return "ERROR_TIMEOUT";
+        case HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED):
+            return "ERROR_NOT_SUPPORTED";
+        case HRESULT_FROM_WIN32(ERROR_NOT_FOUND):
+            return "ERROR_NOT_FOUND";
+        case HRESULT_FROM_WIN32(ERROR_INVALID_STATE):
+            return "ERROR_INVALID_STATE";
+        default:
+            return nullptr;
+    }
+}
+
+std::string format_hresult(HRESULT hr) {
+    const char *name = known_hresult_name(hr);
+    if (name) {
+        return std::string(name) + " (" + format_hresult_code(hr) + ")";
+    }
+
+    if (HRESULT_FACILITY(hr) == FACILITY_WIN32) {
+        std::ostringstream oss;
+        oss << "HRESULT_FROM_WIN32(" << HRESULT_CODE(hr) << ") (" << format_hresult_code(hr) << ")";
+        return oss.str();
+    }
+
+    return "HRESULT(" + format_hresult_code(hr) + ")";
+}
+
 std::string format_system_message(HRESULT hr) {
     LPWSTR raw = nullptr;
+    DWORD message_id = static_cast<DWORD>(hr);
+    if (HRESULT_FACILITY(hr) == FACILITY_WIN32) {
+        message_id = HRESULT_CODE(hr);
+    }
     DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
     DWORD len = FormatMessageW(
         flags,
         nullptr,
-        static_cast<DWORD>(hr),
+        message_id,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         reinterpret_cast<LPWSTR>(&raw),
         0,

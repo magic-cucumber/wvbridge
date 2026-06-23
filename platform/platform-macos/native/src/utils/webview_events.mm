@@ -99,6 +99,11 @@
     [self notifyNavigationFailure:error];
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    (void) webView;
+    notify_webview_fatal_error_to_jvm(_pointer, "WK_WEB_CONTENT_PROCESS_DID_TERMINATE");
+}
+
 - (void)notifyNavigationFailure:(NSError *)error {
     NSString *reason = [NSString stringWithFormat:
         @"wkwebview.navigation.failed: domain=%@, code=%ld, message=%@",

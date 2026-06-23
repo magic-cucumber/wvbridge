@@ -16,6 +16,7 @@ struct WebViewEvents {
     EventRegistrationToken navigation_completed{};
     EventRegistrationToken history_changed{};
     EventRegistrationToken new_window_requested{};
+    EventRegistrationToken process_failed{};
 
     bool has_source_changed = false;
     bool has_navigation_starting = false;
@@ -23,6 +24,7 @@ struct WebViewEvents {
     bool has_navigation_completed = false;
     bool has_history_changed = false;
     bool has_new_window_requested = false;
+    bool has_process_failed = false;
 };
 
 namespace {
@@ -38,6 +40,31 @@ std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs* ar
     }
     return L"webview2.navigation.failed: WebErrorStatus=" +
            std::to_wstring(static_cast<int>(status));
+}
+
+const wchar_t* format_process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND kind) {
+    switch (kind) {
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED";
+        case COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED";
+        default:
+            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN";
+    }
 }
 
 bool can_notify(WebViewContext* ctx) {
@@ -167,6 +194,26 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         &events->new_window_requested
     ));
 
+    events->has_process_failed = SUCCEEDED(events->webview->add_ProcessFailed(
+        Callback<ICoreWebView2ProcessFailedEventHandler>(
+            [ctx](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                if (!can_notify(ctx)) return S_OK;
+
+                COREWEBVIEW2_PROCESS_FAILED_KIND kind =
+                    COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
+                if (args) {
+                    args->get_ProcessFailedKind(&kind);
+                }
+                notify_webview_fatal_error_to_jvm(
+                    reinterpret_cast<jlong>(ctx),
+                    format_process_failed_kind(kind)
+                );
+                return S_OK;
+            }
+        ).Get(),
+        &events->process_failed
+    ));
+
     notify_history(ctx);
     return events;
 }
@@ -192,6 +239,9 @@ void webview_events_destroy(WebViewEvents* events) {
         }
         if (events->has_new_window_requested) {
             events->webview->remove_NewWindowRequested(events->new_window_requested);
+        }
+        if (events->has_process_failed) {
+            events->webview->remove_ProcessFailed(events->process_failed);
         }
     }
     delete events;
