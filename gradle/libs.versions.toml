@@ -4,6 +4,7 @@ agp = "8.13.2"
 maven-publish = "0.34.0"
 compose = "1.10.3"
 dokka-gradle-plugin-version = "2.1.0"
+androidx-webkit = "1.14.0"
 [libraries]
 dokka-gradle-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "dokka-gradle-plugin-version" }
 foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
@@ -14,3 +15,4 @@ compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin"
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "androidx-webkit" }

@@ -73,6 +73,15 @@ int clamp_dim(jint v) {
         wvbridge::webview_events_destroy(ctx->events);
         ctx->events = nullptr;
 
+        if (ctx->webview) {
+            WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(ctx->webview);
+            for (const auto &entry: ctx->document_start_hooks) {
+                webkit_user_content_manager_remove_script(manager, entry.second);
+                webkit_user_script_unref(entry.second);
+            }
+            ctx->document_start_hooks.clear();
+        }
+
         // GtkWindow 销毁后，会连带销毁子树（WebView）。
         if (ctx->window) {
             gtk_widget_destroy(ctx->window);
@@ -123,4 +132,3 @@ int clamp_dim(jint v) {
         focus_embedded_webview(ctx);
         return FALSE;
     }
-

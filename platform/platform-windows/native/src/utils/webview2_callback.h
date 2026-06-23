@@ -54,6 +54,16 @@ inline const IID &webview2_handler_iid<ICoreWebView2NewWindowRequestedEventHandl
     return IID_ICoreWebView2NewWindowRequestedEventHandler;
 }
 
+template<>
+inline const IID &webview2_handler_iid<ICoreWebView2ExecuteScriptCompletedHandler>() {
+    return IID_ICoreWebView2ExecuteScriptCompletedHandler;
+}
+
+template<>
+inline const IID &webview2_handler_iid<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>() {
+    return IID_ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler;
+}
+
 template<typename Interface, typename Fn, typename Signature>
 class LambdaComCallbackImpl;
 

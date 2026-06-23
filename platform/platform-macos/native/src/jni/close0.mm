@@ -86,6 +86,9 @@ API_EXPORT(void, close0, jlong handle) {
             [ctx->events release];
             ctx->events = nil;
 
+            [ctx->documentStartHooks release];
+            ctx->documentStartHooks = nil;
+
             [ctx->webView.UIDelegate release];
             ctx->webView.UIDelegate = nil;
             [ctx->webView removeFromSuperview];

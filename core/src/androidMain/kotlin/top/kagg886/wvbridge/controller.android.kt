@@ -1,6 +1,8 @@
 package top.kagg886.wvbridge
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -9,6 +11,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.startCoroutine
+import kotlin.coroutines.suspendCoroutine
+import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.bridge.JavaScriptBridge
 
 @JvmInline
 internal value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
@@ -16,11 +26,74 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
 }
 
 internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
+    internal val _bridge by lazy {
+        AndroidJavaScriptBridge(delegate.instance)
+    }
     internal val _navigator by lazy {
         AndroidWebViewNavigator(delegate.instance)
     }
     override val navigator: WebViewNavigator
         get() = _navigator
+    override val bridge: JavaScriptBridge
+        get() = _bridge
+}
+
+internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScriptBridge {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    override suspend fun evaluateScript(script: String): JavaScriptBridge.Value =
+        onMainThread {
+            suspendCancellableCoroutine { continuation ->
+                instance.evaluateJavascript(script) { result ->
+                    continuation.resume(result.toJavaScriptValue())
+                }
+            }
+        }
+
+    override suspend fun registerDocumentStartHook(script: String): CloseHandle =
+        onMainThread {
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                throw UnsupportedOperationException("Android WebView document-start script injection is not supported")
+            }
+
+            val handler = WebViewCompat.addDocumentStartJavaScript(instance, script, setOf("*"))
+            object : CloseHandle {
+                private var closed = false
+
+                override fun close() {
+                    if (closed) return
+                    closed = true
+                    runOnMainThread {
+                        handler.remove()
+                    }
+                }
+            }
+        }
+
+    private suspend fun <T> onMainThread(block: suspend () -> T): T {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return block()
+        }
+        return suspendCancellableCoroutine { continuation ->
+            mainHandler.post {
+                block.startCoroutine(continuation)
+            }
+        }
+    }
+
+    private fun runOnMainThread(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post(block)
+        }
+    }
+
+    private fun String?.toJavaScriptValue(): JavaScriptBridge.Value = when (this) {
+        null, "null" -> JavaScriptBridge.Value.Null
+        "undefined" -> JavaScriptBridge.Value.Undefined
+        else -> JavaScriptBridge.Value.ScriptObject(this)
+    }
 }
 
 internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewNavigator {

@@ -188,6 +188,9 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     public fun stop(): Unit = stop(handle)
     public fun goBack(): Boolean = goBack(handle)
     public fun goForward(): Boolean = goForward(handle)
+    public fun evaluateScript(script: String): String? = evaluateScript(handle, script)
+    public fun registerDocumentStartHook(script: String): Long = registerDocumentStartHook(handle, script)
+    public fun unregisterDocumentStartHook(hookId: Long): Unit = unregisterDocumentStartHook(handle, hookId)
 
     private val closeLock = ReentrantLock()
     override fun close(): Unit = closeLock.withLock {
@@ -210,6 +213,9 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private external fun goBack(webview: Long): Boolean
     private external fun goForward(webview: Long): Boolean
     private external fun stop(webview: Long)
+    private external fun evaluateScript(webview: Long, script: String): String?
+    private external fun registerDocumentStartHook(webview: Long, script: String): Long
+    private external fun unregisterDocumentStartHook(webview: Long, hookId: Long)
 
 
     @Suppress("UnsafeDynamicallyLoadedCode")

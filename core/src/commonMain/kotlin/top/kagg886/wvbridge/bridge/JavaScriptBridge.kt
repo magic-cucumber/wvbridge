@@ -8,7 +8,7 @@ package top.kagg886.wvbridge.bridge
  */
 public interface JavaScriptBridge {
     public suspend fun evaluateScript(script: String): Value
-    public suspend fun registerDocumentStartHook(script: String): AutoCloseable
+    public suspend fun registerDocumentStartHook(script: String): CloseHandle
 
     public sealed interface Value {
         public data object Undefined : Value

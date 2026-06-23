@@ -35,6 +35,7 @@ API_EXPORT(jlong, initAndAttach) {
     runOnMainSync(^{
         ctx->rootLayer = [[CALayer alloc] init];
         ctx->windowLayer = [surfaceLayers.windowLayer retain];
+        ctx->documentStartHooks = [[NSMutableDictionary alloc] init];
 
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
         config.defaultWebpagePreferences.allowsContentJavaScript = YES;

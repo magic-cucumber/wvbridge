@@ -13,4 +13,6 @@ struct WebViewContext {
     CALayer *rootLayer = nil;
     CALayer *windowLayer = nil;
     WebViewEvents *events = nil;
+    jlong nextDocumentStartHookId = 1;
+    NSMutableDictionary<NSNumber *, NSString *> *documentStartHooks = nil;
 };

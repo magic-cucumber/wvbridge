@@ -36,6 +36,10 @@ library(
             implementation(libs.foundation)
         }
 
+        androidMain.dependencies {
+            implementation(libs.androidx.webkit)
+        }
+
         commonTest.dependencies {
             implementation(kotlin("test"))
         }

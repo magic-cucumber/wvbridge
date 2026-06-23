@@ -7,6 +7,8 @@
 #include <wrl.h>
 
 #include <atomic>
+#include <map>
+#include <string>
 
 #include "thread.h"
 
@@ -23,4 +25,6 @@ struct WebViewContext {
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
     WebViewEvents* events = nullptr;
+    long long next_document_start_hook_id = 1;
+    std::map<long long, std::wstring> document_start_hook_ids;
 };

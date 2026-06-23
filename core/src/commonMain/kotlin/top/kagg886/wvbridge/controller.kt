@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import top.kagg886.wvbridge.bridge.JavaScriptBridge
 
 /**
  * Common controllers for [WebView].
@@ -62,6 +63,8 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
      * Imperative navigation controls bound to the same native WebView instance.
      */
     public abstract val navigator: WebViewNavigator
+
+    public abstract val bridge: JavaScriptBridge
 }
 
 /**
