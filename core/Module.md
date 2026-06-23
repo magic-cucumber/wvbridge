@@ -1,16 +1,19 @@
-# Module wvbridge:core
+# wvbridge
 
-`wvbridge` is a Compose Multiplatform library that embeds the host platform WebView and exposes a
-small common API for loading pages, observing URL and loading state changes, and driving basic
-browser navigation.
+| Artifact           | Latest version                                                                                                                                                                                      |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `core`             | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/core?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/core)                         |
+| `platform-windows` | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-windows?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-windows) |
+| `platform-linux`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-linux?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-linux)     |
+| `platform-macos`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-macos?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-macos)     |
 
-The common entry points are:
+`wvbridge` is a **Compose Multiplatform** library that embeds the **host platform WebView** and
+exposes a small, Kotlin-friendly common API for loading pages, observing URL and loading state
+changes, and driving basic browser navigation.
 
-- [WebView] to display the native WebView inside Compose UI.
-- [rememberWebViewController] to create and remember a [WebViewController].
-- [webViewController.url] to observe the current top-level URL.
-- [WebViewController.loadingState] to observe readiness and page loading progress through [LoadingState].
-- [webViewController.navigator] to perform imperative navigation through [WebViewNavigator].
+Documentation site: [wvbridge.kagg886.top](https://wvbridge.kagg886.top)
+
+> Note: This project is under active development. APIs and platform coverage may change.
 
 ## Installation
 
@@ -31,36 +34,36 @@ kotlin {
 ```
 
 On JVM, `wvbridge` also needs a platform-specific native runtime library. The recommended approach is
-to use Google's `os-detector` Gradle plugin and select the matching runtime artifact from
+to use Google's `os-detector` Gradle plugin and choose the runtime artifact from
 `osdetector.classifier`.
 
 ```kotlin
 plugins {
-  id("com.google.osdetector") version "1.7.3"
+    id("com.google.osdetector") version "1.7.3"
 }
 
 repositories {
-  mavenCentral()
+    mavenCentral()
 }
 
 kotlin {
-  jvm()
+    jvm()
 
-  sourceSets {
-    jvmMain.dependencies {
-      val platform = when (osdetector.classifier) {
-        "windows-x86_64" -> "platform-windows"
-        "linux-x86_64" -> "platform-linux"
-        "osx-aarch_64" -> "platform-macos"
-        else -> error(
-          "Unsupported JVM runtime for wvbridge: ${osdetector.classifier}. " +
-                  "Supported classifiers are windows-x86_64, linux-x86_64, and osx-aarch_64."
-        )
-      }
+    sourceSets {
+        jvmMain.dependencies {
+            val platform = when (osdetector.classifier) {
+                "windows-x86_64" -> "platform-windows"
+                "linux-x86_64" -> "platform-linux"
+                "osx-aarch_64" -> "platform-macos"
+                else -> error(
+                    "Unsupported JVM runtime for wvbridge: ${osdetector.classifier}. " +
+                        "Supported classifiers are windows-x86_64, linux-x86_64, and osx-aarch_64."
+                )
+            }
 
-      runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+            runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+        }
     }
-  }
 }
 ```
 
@@ -70,9 +73,9 @@ Current JVM native runtime support is limited to:
 - Linux x64: `linux-x86_64`
 - macOS arm64: `osx-aarch_64`
 
-## Simple Usage
+## Quick Start
 
-Create a remembered controller and render [WebView]:
+Create a remembered controller and render `WebView`:
 
 ```kotlin
 import androidx.compose.ui.Modifier
@@ -87,7 +90,7 @@ WebView(
 )
 ```
 
-To navigate after the first load, use [webViewController.navigator]:
+Basic navigation uses `webViewController.navigator`:
 
 ```kotlin
 webViewController.navigator.loadUrl("https://kotlinlang.org")
@@ -97,20 +100,22 @@ webViewController.navigator.refresh()
 webViewController.navigator.stop()
 ```
 
-## Typical State Flow
+More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.top).
 
-- [rememberWebViewController] creates a [WebViewController] whose initial [WebViewController.loadingState] is
-  [LoadingState.NotReady].
-- When the native WebView is ready, the loading state moves to [LoadingState.Ready].
-- The initial URL is loaded automatically once the loading state becomes [LoadingState.Ready].
-- While a page is loading, the loading state becomes [LoadingState.Loading].
-- When the navigation finishes or fails, the loading state becomes [LoadingState.LoadingEnd].
+## Features
 
-## Notes
+Legend: ✅ Supported; ⚠️ Supported with platform limits; ➖ Not applicable.
 
-- [webViewController.url] is suitable for address-bar synchronization and may contain custom URL schemes
-  if the underlying native engine supports them.
-- Desktop backends use native on-screen rendered WebViews. Compose or Swing content cannot be drawn
-  above the WebView on desktop platforms.
-- The library intentionally wraps the platform-native WebView instead of embedding a Chromium-based
-  browser engine.
+| Feature                                      | Android           | iOS      | Windows JVM                    | Linux JVM                      | macOS JVM                      |
+|----------------------------------------------|-------------------|----------|--------------------------------|--------------------------------|--------------------------------|
+| Compose `WebView` component                  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| `rememberWebViewController` state controller | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| URL state synchronization                    | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Loading lifecycle and progress state         | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| `loadUrl` / back / forward / refresh / stop  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| JavaScript evaluation                        | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Document-start script injection              | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Custom URL scheme passthrough                | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Platform-native WebView backend              | ✅ Android WebView | ✅ WebKit | ✅ WebView2                     | ✅ WebKitGTK                    | ✅ WebKit                       |
+| Separate desktop runtime artifact            | ➖                 | ➖        | ✅ `platform-windows`           | ✅ `platform-linux`             | ✅ `platform-macos`             |
+| Compose/Swing overlay above WebView          | ✅                 | ✅        | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit |

@@ -2,6 +2,13 @@
 
 **Language:** English | [简体中文](README_ZH.MD)
 
+| Artifact           | Latest version                                                                                                                                                                                      |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `core`             | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/core?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/core)                         |
+| `platform-windows` | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-windows?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-windows) |
+| `platform-linux`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-linux?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-linux)     |
+| `platform-macos`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-macos?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-macos)     |
+
 `wvbridge` is a **Compose Multiplatform** library that embeds the **host platform WebView** and
 exposes a small, Kotlin-friendly common API for loading pages, observing URL and loading state
 changes, and driving basic browser navigation.
@@ -97,23 +104,20 @@ webViewController.navigator.stop()
 
 More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.top).
 
-## Notes
+## Features
 
-- `webViewController.url` is suitable for address-bar synchronization and may contain custom URL schemes
-  if the underlying native engine supports them.
-- Desktop backends use native on-screen rendered WebViews. Compose or Swing content cannot be drawn
-  above the WebView on desktop platforms.
-- The library intentionally wraps the platform-native WebView instead of embedding a Chromium-based
-  browser engine.
+Legend: ✅ Supported; ⚠️ Supported with platform limits; ➖ Not applicable.
 
-## Run Sample App
-
-- Desktop JVM: `./gradlew :sample:compose:desktopApp:run`
-- Android: open the project in Android Studio and run `sample/compose/androidApp`
-- iOS: open `sample/compose/iosApp/iosApp.xcodeproj` in Xcode and run the sample app
-
-## Project Layout
-
-- `core`: common interfaces, states, and Compose API
-- `platform/*`: JVM native runtime backends for each desktop platform
-- `sample/*`: sample applications
+| Feature                                      | Android           | iOS      | Windows JVM                    | Linux JVM                      | macOS JVM                      |
+|----------------------------------------------|-------------------|----------|--------------------------------|--------------------------------|--------------------------------|
+| Compose `WebView` component                  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| `rememberWebViewController` state controller | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| URL state synchronization                    | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Loading lifecycle and progress state         | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| `loadUrl` / back / forward / refresh / stop  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| JavaScript evaluation                        | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Document-start script injection              | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Custom URL scheme passthrough                | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
+| Platform-native WebView backend              | ✅ Android WebView | ✅ WebKit | ✅ WebView2                     | ✅ WebKitGTK                    | ✅ WebKit                       |
+| Separate desktop runtime artifact            | ➖                 | ➖        | ✅ `platform-windows`           | ✅ `platform-linux`             | ✅ `platform-macos`             |
+| Compose/Swing overlay above WebView          | ✅                 | ✅        | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit |

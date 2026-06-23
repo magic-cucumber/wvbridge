@@ -2,6 +2,13 @@
 
 **语言：** [English](README.MD) | 简体中文
 
+| 产物                 | 最新版本                                                                                                                                                                                                |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `core`             | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/core?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/core)                         |
+| `platform-windows` | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-windows?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-windows) |
+| `platform-linux`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-linux?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-linux)     |
+| `platform-macos`   | [![Maven Central](https://img.shields.io/maven-central/v/top.kagg886.wvbridge/platform-macos?label=Maven%20Central)](https://central.sonatype.com/artifact/top.kagg886.wvbridge/platform-macos)     |
+
 `wvbridge` 是一个 **Compose Multiplatform** 库，用于接入**宿主平台自带的 WebView**，并提供一套小而统一、对 Kotlin 友好的 common API，用来加载页面、监听 URL 与加载状态变化，以及执行基础导航操作。
 
 文档站点：[wvbridge.kagg886.top](https://wvbridge.kagg886.top)
@@ -94,20 +101,20 @@ webViewController.navigator.stop()
 
 更多特性请参考 [wvbridge.kagg886.top](https://wvbridge.kagg886.top)。
 
-## 说明
+## 特性
 
-- `webViewController.url` 很适合同步地址栏；如果底层原生引擎支持，也可以承载自定义 URL scheme。
-- 桌面端后端使用的是原生 on-screen 渲染 WebView，因此不能在 WebView 上方叠放 Compose 或 Swing 内容。
-- 这个库刻意选择封装平台原生 WebView，而不是引入 Chromium 一类更重的浏览器内核。
+图例：✅ 已支持；⚠️ 已支持，但存在平台限制；➖ 不适用。
 
-## 运行示例
-
-- Desktop JVM：`./gradlew :sample:compose:desktopApp:run`
-- Android：使用 Android Studio 打开项目并运行 `sample/compose/androidApp`
-- iOS：使用 Xcode 打开 `sample/compose/iosApp/iosApp.xcodeproj` 并运行示例
-
-## 项目结构
-
-- `core`：common 接口、状态与 Compose API
-- `platform/*`：各桌面平台对应的 JVM 原生运行时后端
-- `sample/*`：示例应用
+| 功能                                | Android           | iOS      | Windows JVM          | Linux JVM            | macOS JVM            |
+|-----------------------------------|-------------------|----------|----------------------|----------------------|----------------------|
+| Compose `WebView` 组件              | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| `rememberWebViewController` 状态控制器 | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| URL 状态同步                          | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| 加载生命周期与进度状态                       | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| `loadUrl` / 后退 / 前进 / 刷新 / 停止     | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| JavaScript 执行                     | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| document-start 脚本注入               | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| 自定义 URL scheme 透传                 | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
+| 平台原生 WebView 后端                   | ✅ Android WebView | ✅ WebKit | ✅ WebView2           | ✅ WebKitGTK          | ✅ WebKit             |
+| 独立桌面运行时产物                         | ➖                 | ➖        | ✅ `platform-windows` | ✅ `platform-linux`   | ✅ `platform-macos`   |
+| WebView 上层 Compose/Swing 叠放       | ✅                 | ✅        | ⚠️ 原生 on-screen 视图限制 | ⚠️ 原生 on-screen 视图限制 | ⚠️ 原生 on-screen 视图限制 |
