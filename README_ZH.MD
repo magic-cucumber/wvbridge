@@ -103,18 +103,14 @@ webViewController.navigator.stop()
 
 ## 特性
 
-图例：✅ 已支持；⚠️ 已支持，但存在平台限制；➖ 不适用。
+图例：✅ 已实现；❌ 未实现；⚠️ 已实现，但存在限制；🚧 施工中；🧪 未测试。
 
-| 功能                                | Android           | iOS      | Windows JVM          | Linux JVM            | macOS JVM            |
-|-----------------------------------|-------------------|----------|----------------------|----------------------|----------------------|
-| Compose `WebView` 组件              | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| `rememberWebViewController` 状态控制器 | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| URL 状态同步                          | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| 加载生命周期与进度状态                       | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| `loadUrl` / 后退 / 前进 / 刷新 / 停止     | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| JavaScript 执行                     | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| document-start 脚本注入               | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| 自定义 URL scheme 透传                 | ✅                 | ✅        | ✅                    | ✅                    | ✅                    |
-| 平台原生 WebView 后端                   | ✅ Android WebView | ✅ WebKit | ✅ WebView2           | ✅ WebKitGTK          | ✅ WebKit             |
-| 独立桌面运行时产物                         | ➖                 | ➖        | ✅ `platform-windows` | ✅ `platform-linux`   | ✅ `platform-macos`   |
-| WebView 上层 Compose/Swing 叠放       | ✅                 | ✅        | ⚠️ 原生 on-screen 视图限制 | ⚠️ 原生 on-screen 视图限制 | ⚠️ 原生 on-screen 视图限制 |
+| 功能 | Android | iOS | Windows JVM | Linux JVM | macOS JVM |
+| --- | --- | --- | --- | --- | --- |
+| 基本导航（前进、后退、加载、停止、刷新） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| URL 监听 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 加载状态监听 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 同步执行 JS 代码 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| 添加网页脚本（document-start hook） | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| 报错自动销毁 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| 离屏渲染 | ✅ 系统能力 | 🧪 | ❌ | ❌ | ❌ |

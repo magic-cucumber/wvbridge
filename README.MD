@@ -106,18 +106,14 @@ More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.
 
 ## Features
 
-Legend: ✅ Supported; ⚠️ Supported with platform limits; ➖ Not applicable.
+Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitations; 🚧 Under construction; 🧪 Untested.
 
-| Feature                                      | Android           | iOS      | Windows JVM                    | Linux JVM                      | macOS JVM                      |
-|----------------------------------------------|-------------------|----------|--------------------------------|--------------------------------|--------------------------------|
-| Compose `WebView` component                  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| `rememberWebViewController` state controller | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| URL state synchronization                    | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| Loading lifecycle and progress state         | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| `loadUrl` / back / forward / refresh / stop  | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| JavaScript evaluation                        | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| Document-start script injection              | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| Custom URL scheme passthrough                | ✅                 | ✅        | ✅                              | ✅                              | ✅                              |
-| Platform-native WebView backend              | ✅ Android WebView | ✅ WebKit | ✅ WebView2                     | ✅ WebKitGTK                    | ✅ WebKit                       |
-| Separate desktop runtime artifact            | ➖                 | ➖        | ✅ `platform-windows`           | ✅ `platform-linux`             | ✅ `platform-macos`             |
-| Compose/Swing overlay above WebView          | ✅                 | ✅        | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit | ⚠️ Native on-screen view limit |
+| Feature | Android | iOS | Windows JVM | Linux JVM | macOS JVM |
+| --- | --- | --- | --- | --- | --- |
+| Basic navigation (forward, back, load, stop, refresh) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| URL listener | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Loading state listener | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Synchronous JS execution | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| Add page script (document-start hook) | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| Auto destroy on error | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| Off-screen rendering | ✅ System capability | 🧪 | ❌ | ❌ | ❌ |
