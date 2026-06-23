@@ -8,6 +8,7 @@ import androidx.compose.ui.awt.SwingPanel
 import java.awt.Component
 import java.util.function.BiConsumer
 import java.util.function.Consumer
+import javax.swing.SwingUtilities
 
 @Composable
 public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) {
@@ -28,6 +29,21 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
         controller.instance.addPageLoadingStartListener(listener)
         onDispose {
             controller.instance.removePageLoadingStartListener(listener)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val listener: Consumer<String?> = {
+            SwingUtilities.invokeLater {
+                if (controller.instance.isDisplayable && controller.instance.isShowing) {
+                    controller.instance.addNotify()
+                }
+            }
+        }
+
+        controller.instance.addWebViewCloseListener(listener)
+        onDispose {
+            controller.instance.removeWebViewCloseListener(listener)
         }
     }
 

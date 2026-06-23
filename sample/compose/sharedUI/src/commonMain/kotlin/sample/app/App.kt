@@ -67,6 +67,9 @@ fun App() {
 
                 if (dialog.isNotBlank()) {
                     //TODO it will be hidden when running on desktop...
+                    LaunchedEffect(Unit) {
+                        println(dialog)
+                    }
                     AlertDialog(
                         onDismissRequest = { dialog = "" },
                         title = { Text("Error!") },
