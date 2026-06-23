@@ -34,11 +34,8 @@ set(JNI_INCLUDE_DIRS
 set(JAWT_LIBRARY ${JAVA_HOME}/lib/libjawt.dylib)
 
 # 源文件
-set(SOURCES
-        src/libs.mm
-        src/utils.mm
-        src/ui_delegate.mm
-        src/webview_events.mm
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
 )
 
 # 创建共享库
@@ -53,6 +50,10 @@ set_target_properties(wvbridge PROPERTIES
 target_include_directories(wvbridge PRIVATE
         ${JNI_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/jni
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/state
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
 )
 
 # 链接库

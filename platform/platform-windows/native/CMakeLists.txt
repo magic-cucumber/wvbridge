@@ -116,11 +116,8 @@ endif()
 
 set(WEBVIEW2_LOADER_LIB "${WEBVIEW2_LOADER_STATIC_LIB}")
 
-set(SOURCES
-    src/libs.cpp
-    src/thread.cpp
-    src/utils.cpp
-    src/webview_events.cpp
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
 add_library(wvbridge SHARED ${SOURCES})
@@ -129,6 +126,9 @@ target_include_directories(wvbridge PRIVATE
     ${JNI_INCLUDE_DIRS}
     ${WEBVIEW2_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/jni
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/state
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
 )
 
 target_link_directories(wvbridge PRIVATE ${JAVA_LIB_DIRS})

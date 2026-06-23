@@ -46,14 +46,8 @@ find_package(X11 REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 pkg_check_modules(WEBKIT REQUIRED webkit2gtk-4.1)
 
-set(SOURCES
-        src/libs.cpp
-        src/utils.h
-        src/utils.cpp
-        src/gtk.h
-        src/gtk.cpp
-        src/webview_events.h
-        src/webview_events.cpp
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
 # 创建共享库
@@ -66,6 +60,10 @@ target_include_directories(wvbridge PRIVATE
         ${X11_INCLUDE_DIR}
         ${WEBKIT_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/jni
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/state
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
 )
 
 target_link_libraries(wvbridge PRIVATE

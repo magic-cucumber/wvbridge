@@ -1,0 +1,126 @@
+#include "libs_helpers.h"
+
+int clamp_dim(jint v) {
+        return (v < 1) ? 1 : (int) v;
+    }
+
+    ::Display *get_xdisplay_from_gdk_default() {
+        GdkDisplay *gdpy = gdk_display_get_default();
+        if (!gdpy) return nullptr;
+
+        // WebKitGTK 4.1 + JAWT_X11DrawingSurfaceInfo -> 仅支持 X11 嵌入
+        if (!GDK_IS_X11_DISPLAY(gdpy)) return nullptr;
+
+        return gdk_x11_display_get_xdisplay(gdpy);
+    }
+
+    ::Window get_xid_from_gtk_window(GtkWidget *w) {
+        if (!w) return 0;
+
+        GdkWindow *gdk_window = gtk_widget_get_window(w);
+        if (!gdk_window || !GDK_IS_X11_WINDOW(gdk_window)) return 0;
+
+        return (::Window) gdk_x11_window_get_xid(gdk_window);
+    }
+
+    // 在 X11 下吞掉由窗口已被外部销毁/重父子关系导致的 BadWindow 等错误，避免 GDK 打 warning。
+    void x11_ignore_errors(const std::function<void()> &fn) {
+        GdkDisplay *gdpy = gdk_display_get_default();
+        if (gdpy && GDK_IS_X11_DISPLAY(gdpy)) {
+            gdk_x11_display_error_trap_push(gdpy);
+            if (fn) fn();
+            gdk_x11_display_error_trap_pop_ignored(gdpy);
+            return;
+        }
+
+        if (fn) fn();
+    }
+
+    // 仅针对 X11：设置 EWMH 属性，避免这个用于嵌入的 GtkWindow 被 GNOME/WM 当作独立应用窗口展示。
+    void x11_set_ewmh_embed_hints(::Display *dpy, ::Window win) {
+        if (!dpy || win == 0) return;
+
+        const Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+        const Atom skip_taskbar = XInternAtom(dpy, "_NET_WM_STATE_SKIP_TASKBAR", False);
+        const Atom skip_pager = XInternAtom(dpy, "_NET_WM_STATE_SKIP_PAGER", False);
+
+        Atom states[2] = {skip_taskbar, skip_pager};
+        XChangeProperty(dpy, win, net_wm_state, XA_ATOM, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char *>(states), 2);
+
+        // 补充 window type：utility 一般不会出现在任务栏/概览中（不同 WM 行为略有差异）。
+        const Atom net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+        const Atom utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+
+        XChangeProperty(dpy, win, net_wm_window_type, XA_ATOM, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char *>(const_cast<Atom *>(&utility)), 1);
+
+        XFlush(dpy);
+    }
+
+    void destroy_ctx_on_gtk_thread(WebViewContext *ctx) {
+        if (!ctx) return;
+
+        if (ctx->window && ctx->window_button_press_handler_id != 0) {
+            g_signal_handler_disconnect(ctx->window, ctx->window_button_press_handler_id);
+            ctx->window_button_press_handler_id = 0;
+        }
+        if (ctx->webview && ctx->webview_button_press_handler_id != 0) {
+            g_signal_handler_disconnect(ctx->webview, ctx->webview_button_press_handler_id);
+            ctx->webview_button_press_handler_id = 0;
+        }
+
+        wvbridge::webview_events_destroy(ctx->events);
+        ctx->events = nullptr;
+
+        // GtkWindow 销毁后，会连带销毁子树（WebView）。
+        if (ctx->window) {
+            gtk_widget_destroy(ctx->window);
+            ctx->window = nullptr;
+            ctx->webview = nullptr;
+        }
+
+        ctx->child_xid = 0;
+        ctx->xdisplay = nullptr;
+        ctx->parent_xid = 0;
+    }
+
+    void focus_embedded_webview(WebViewContext *ctx) {
+        if (!ctx || ctx->closing.load(std::memory_order_acquire)) return;
+
+        if (ctx->window && GTK_IS_WINDOW(ctx->window)) {
+            gtk_window_set_accept_focus(GTK_WINDOW(ctx->window), TRUE);
+            gtk_window_set_focus(GTK_WINDOW(ctx->window),
+                                 ctx->webview ? GTK_WIDGET(ctx->webview) : GTK_WIDGET(ctx->window));
+        }
+
+        if (ctx->webview) {
+            gtk_widget_grab_focus(GTK_WIDGET(ctx->webview));
+        } else if (ctx->window) {
+            gtk_widget_grab_focus(GTK_WIDGET(ctx->window));
+        }
+
+        if (ctx->window) {
+            GdkWindow *gdk_window = gtk_widget_get_window(ctx->window);
+            if (gdk_window) {
+                gdk_window_focus(gdk_window, GDK_CURRENT_TIME);
+            }
+        }
+
+        if (ctx->xdisplay && ctx->child_xid != 0) {
+            x11_ignore_errors([&] {
+                XSetInputFocus(ctx->xdisplay, ctx->child_xid, RevertToParent, CurrentTime);
+                XFlush(ctx->xdisplay);
+            });
+        }
+    }
+
+    gboolean focus_on_button_press_cb(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+        (void) widget;
+        (void) event;
+
+        auto *ctx = static_cast<WebViewContext *>(user_data);
+        focus_embedded_webview(ctx);
+        return FALSE;
+    }
+
