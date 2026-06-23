@@ -4,8 +4,8 @@ import androidx.compose.runtime.*
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.util.function.Consumer
 
-internal class SwingPanelState internal constructor(instance: WebViewBridgePanel) :
-    WebViewState<WebViewBridgePanel>(instance) {
+internal class SwingPanelController internal constructor(instance: WebViewBridgePanel) :
+    WebViewController<WebViewBridgePanel>(instance) {
     internal val _navigator by lazy {
         SwingPanelNavigator(instance)
     }
@@ -21,7 +21,7 @@ internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : W
 
     override fun goBack(): Boolean = instance.goBack()
 
-    override fun goForward(url: String): Boolean = instance.goForward()
+    override fun goForward(): Boolean = instance.goForward()
 
     override fun refresh(): Unit = instance.refresh()
     override fun stop(): Unit = instance.stop()
@@ -30,20 +30,20 @@ internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : W
 }
 
 @Composable
-public actual fun rememberWebViewState(url: String): WebViewState<*> {
+public actual fun rememberWebViewController(url: String): WebViewController<*> {
     var initialized by remember { mutableStateOf(false) }
 
-    val state = remember {
-        SwingPanelState(instance = WebViewBridgePanel { initialized = true })
+    val controller = remember {
+        SwingPanelController(instance = WebViewBridgePanel { initialized = true })
     }
 
     LaunchedEffect(initialized) {
         if (!initialized) {
             return@LaunchedEffect
         }
-        state.url = url
-        state.state = LoadingState.Ready
+        controller.url = url
+        controller.loadingState = LoadingState.Ready
     }
 
-    return state
+    return controller
 }

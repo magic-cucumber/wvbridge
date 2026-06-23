@@ -6,27 +6,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Common state holders for [WebView].
+ * Common controllers for [WebView].
  *
- * The public state surface is intentionally small:
- * - [WebViewState.url] records the most recent top-level URL the WebView attempted to load and is a
+ * The public controller surface is intentionally small:
+ * - [WebViewController.url] records the most recent top-level URL the WebView attempted to load and is a
  *   good fit for address bars, including when that navigation fails.
- * - [WebViewState.state] exposes the current native readiness and page-loading lifecycle as [LoadingState].
- * - [WebViewState.navigator] exposes imperative navigation operations.
+ * - [WebViewController.loadingState] exposes the current native readiness and page-loading lifecycle as [LoadingState].
+ * - [WebViewController.navigator] exposes imperative navigation operations.
  *
- * [rememberWebViewState] is implemented per platform:
- * - Desktop/JVM: `core/src/jvmMain/kotlin/top/kagg886/wvbridge/state.jvm.kt`
- *   creates `SwingPanelState(WebViewBridgePanel { initialized = true })`.
+ * [rememberWebViewController] is implemented per platform:
+ * - Desktop/JVM: `core/src/jvmMain/kotlin/top/kagg886/wvbridge/controller.jvm.kt`
+ *   creates `SwingPanelController(WebViewBridgePanel { initialized = true })`.
  *   `initialized` becomes `true` only after
  *   `core/src/jvmMain/kotlin/top/kagg886/wvbridge/internal/WebViewBridgePanel.kt`
  *   finishes `initAndAttach()` inside `addNotify()`, so [LoadingState.NotReady] switches to
  *   [LoadingState.Ready] only after the native desktop view is actually attached.
  *   The native backends behind that panel are WebView2 on Windows, WebKitGTK
  *   (`webkit2gtk-4.1`) on Linux, and WebKit on macOS.
- * - Android: `core/src/androidMain/kotlin/top/kagg886/wvbridge/state.android.kt`
+ * - Android: `core/src/androidMain/kotlin/top/kagg886/wvbridge/controller.android.kt`
  *   creates an `android.webkit.WebView`, enables the required WebView settings, and then
  *   flips to [LoadingState.Ready] in `LaunchedEffect(Unit)`.
- * - iOS: `core/src/iosMain/kotlin/top/kagg886/wvbridge/state.ios.kt`
+ * - iOS: `core/src/iosMain/kotlin/top/kagg886/wvbridge/controller.ios.kt`
  *   creates a `platform.WebKit.WKWebView`, enables JavaScript-related preferences, and then
  *   flips to [LoadingState.Ready] in `LaunchedEffect(Unit)`.
  *
@@ -34,7 +34,7 @@ import androidx.compose.runtime.setValue
  * [LoadingState.Ready] almost immediately during the first composition, while desktop platforms
  * keep [LoadingState.NotReady] until the native peer is fully initialized.
  */
-public abstract class WebViewState<T : AutoCloseable> internal constructor(internal val instance: T) :
+public abstract class WebViewController<T : AutoCloseable> internal constructor(internal val instance: T) :
     AutoCloseable by instance {
     /**
      * The most recent top-level URL the WebView attempted to load.
@@ -48,14 +48,14 @@ public abstract class WebViewState<T : AutoCloseable> internal constructor(inter
         internal set
 
     /**
-     * The current lifecycle state of the native WebView.
+     * The current loading lifecycle of the native WebView.
      *
      * [LoadingState.NotReady] means the backing view has not finished initialization yet.
      * [LoadingState.Ready] means the native view is ready to receive the initial navigation.
-     * After that, the state typically moves between [LoadingState.Loading] and
+     * After that, the loading state typically moves between [LoadingState.Loading] and
      * [LoadingState.LoadingEnd].
      */
-    public var state: LoadingState by mutableStateOf(LoadingState.NotReady)
+    public var loadingState: LoadingState by mutableStateOf(LoadingState.NotReady)
         internal set
 
     /**
@@ -65,15 +65,15 @@ public abstract class WebViewState<T : AutoCloseable> internal constructor(inter
 }
 
 /**
- * Creates and remembers a [WebViewState] for the current composition.
+ * Creates and remembers a [WebViewController] for the current composition.
  *
- * The returned state starts in [LoadingState.NotReady]. On Android and iOS it becomes
+ * The returned controller starts in [LoadingState.NotReady]. On Android and iOS it becomes
  * [LoadingState.Ready] almost immediately. On desktop it becomes [LoadingState.Ready] only after
  * the Swing/AWT host and its native peer have finished attaching.
  *
  * @param url The initial URL that will be loaded once the native WebView reaches
  *   [LoadingState.Ready].
- * @return A remembered [WebViewState] bound to the current composition.
+ * @return A remembered [WebViewController] bound to the current composition.
  */
 @Composable
-public expect fun rememberWebViewState(url: String = "about:blank"): WebViewState<*>
+public expect fun rememberWebViewController(url: String = "about:blank"): WebViewController<*>

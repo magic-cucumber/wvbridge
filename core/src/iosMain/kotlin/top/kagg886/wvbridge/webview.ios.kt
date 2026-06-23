@@ -24,25 +24,25 @@ private fun NSError.toLoadingReason(): String =
 
 @OptIn(ExperimentalForeignApi::class)
 @Composable
-public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
-    state as WKWebViewState
+public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) {
+    controller as WKWebViewController
 
-    DisposableEffect(state) {
-        val webView = state.instance.delegate
+    DisposableEffect(controller) {
+        val webView = controller.instance.delegate
         val delegate = object : NSObject(), WKNavigationDelegateProtocol {
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
-                state.state = LoadingState.Loading(0f)
+                controller.loadingState = LoadingState.Loading(0f)
             }
 
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
-                state.state = LoadingState.LoadingEnd(true, null)
+                controller.loadingState = LoadingState.LoadingEnd(true, null)
             }
 
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) {
-                state.state = LoadingState.LoadingEnd(false, withError.toLoadingReason())
+                controller.loadingState = LoadingState.LoadingEnd(false, withError.toLoadingReason())
             }
 
             @ObjCSignatureOverride
@@ -51,7 +51,7 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
                 didFailProvisionalNavigation: WKNavigation?,
                 withError: NSError
             ) {
-                state.state = LoadingState.LoadingEnd(false, withError.toLoadingReason())
+                controller.loadingState = LoadingState.LoadingEnd(false, withError.toLoadingReason())
             }
         }
 
@@ -61,8 +61,8 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    DisposableEffect(state) {
-        val webView = state.instance.delegate
+    DisposableEffect(controller) {
+        val webView = controller.instance.delegate
         val observer = object : WVBKVOObserverProtocolProtocol, NSObject() {
             override fun observeValueForKeyPath(
                 keyPath: String?,
@@ -71,7 +71,7 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
                 context: COpaquePointer?
             ) {
                 val progress = (change?.get(NSKeyValueChangeNewKey) as? Number)?.toFloat() ?: 0f
-                state.state = LoadingState.Loading(progress.coerceIn(0f, 1f))
+                controller.loadingState = LoadingState.Loading(progress.coerceIn(0f, 1f))
             }
         }
 
@@ -81,8 +81,8 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    DisposableEffect(state) {
-        val webView = state.instance.delegate
+    DisposableEffect(controller) {
+        val webView = controller.instance.delegate
         val observer = object : WVBKVOObserverProtocolProtocol, NSObject() {
             override fun observeValueForKeyPath(
                 keyPath: String?,
@@ -90,7 +90,7 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
                 change: Map<Any?, *>?,
                 context: COpaquePointer?
             ) {
-                state.url = webView.URL?.absoluteString ?: ""
+                controller.url = webView.URL?.absoluteString ?: ""
             }
         }
 
@@ -100,8 +100,8 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    DisposableEffect(state) {
-        val webView = state.instance.delegate
+    DisposableEffect(controller) {
+        val webView = controller.instance.delegate
         val observer = object : WVBKVOObserverProtocolProtocol, NSObject() {
             override fun observeValueForKeyPath(
                 keyPath: String?,
@@ -109,7 +109,7 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
                 change: Map<Any?, *>?,
                 context: COpaquePointer?
             ) {
-                state._navigator.canGoBack = webView.canGoBack()
+                controller._navigator.canGoBack = webView.canGoBack()
             }
         }
 
@@ -119,8 +119,8 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    DisposableEffect(state) {
-        val webView = state.instance.delegate
+    DisposableEffect(controller) {
+        val webView = controller.instance.delegate
         val observer = object : WVBKVOObserverProtocolProtocol, NSObject() {
             override fun observeValueForKeyPath(
                 keyPath: String?,
@@ -128,7 +128,7 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
                 change: Map<Any?, *>?,
                 context: COpaquePointer?
             ) {
-                state._navigator.canGoForward = webView.canGoForward()
+                controller._navigator.canGoForward = webView.canGoForward()
             }
         }
 
@@ -138,14 +138,14 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    LaunchedEffect(state.state) {
-        if (state.state == LoadingState.Ready) {
-            state.navigator.loadUrl(state.url)
+    LaunchedEffect(controller.loadingState) {
+        if (controller.loadingState == LoadingState.Ready) {
+            controller.navigator.loadUrl(controller.url)
         }
     }
 
     UIKitView(
-        factory = { state.instance.delegate },
+        factory = { controller.instance.delegate },
         modifier = modifier,
     )
 }

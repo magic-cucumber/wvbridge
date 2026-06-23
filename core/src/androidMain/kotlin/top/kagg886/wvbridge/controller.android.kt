@@ -15,7 +15,7 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
     override fun close(): Unit = Unit
 }
 
-internal class AndroidWebViewState(delegate: AutoClosableWebView) : WebViewState<AutoClosableWebView>(delegate) {
+internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
     internal val _navigator by lazy {
         AndroidWebViewNavigator(delegate.instance)
     }
@@ -34,7 +34,7 @@ internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewN
         return instance.canGoBack()
     }
 
-    override fun goForward(url: String): Boolean {
+    override fun goForward(): Boolean {
         instance.goForward()
         return instance.canGoForward()
     }
@@ -47,22 +47,22 @@ internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewN
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-public actual fun rememberWebViewState(url: String): WebViewState<*> {
+public actual fun rememberWebViewController(url: String): WebViewController<*> {
     val ctx = LocalContext.current
 
-    val state = remember {
+    val controller = remember {
         val wv = WebView(ctx)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
         wv.settings.javaScriptCanOpenWindowsAutomatically = true
         wv.settings.loadsImagesAutomatically = true
-        AndroidWebViewState(AutoClosableWebView(wv))
+        AndroidWebViewController(AutoClosableWebView(wv))
     }
 
     LaunchedEffect(Unit) {
-        state.url = url
-        state.state = LoadingState.Ready
+        controller.url = url
+        controller.loadingState = LoadingState.Ready
     }
 
-    return state
+    return controller
 }

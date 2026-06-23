@@ -70,36 +70,36 @@ Current JVM native runtime support is limited to:
 
 ## Quick Start
 
-Create a remembered state and render `WebView`:
+Create a remembered controller and render `WebView`:
 
 ```kotlin
 import androidx.compose.ui.Modifier
 import top.kagg886.wvbridge.WebView
-import top.kagg886.wvbridge.rememberWebViewState
+import top.kagg886.wvbridge.rememberWebViewController
 
-val webViewState = rememberWebViewState("https://example.com")
+val webViewController = rememberWebViewController("https://example.com")
 
 WebView(
-    state = webViewState,
+    controller = webViewController,
     modifier = Modifier,
 )
 ```
 
-Basic navigation uses `WebViewState.navigator`:
+Basic navigation uses `webViewController.navigator`:
 
 ```kotlin
-webViewState.navigator.loadUrl("https://kotlinlang.org")
-webViewState.navigator.goBack()
-webViewState.navigator.goForward("")
-webViewState.navigator.refresh()
-webViewState.navigator.stop()
+webViewController.navigator.loadUrl("https://kotlinlang.org")
+webViewController.navigator.goBack()
+webViewController.navigator.goForward()
+webViewController.navigator.refresh()
+webViewController.navigator.stop()
 ```
 
 More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.top).
 
 ## Notes
 
-- `WebViewState.url` is suitable for address-bar synchronization and may contain custom URL schemes
+- `webViewController.url` is suitable for address-bar synchronization and may contain custom URL schemes
   if the underlying native engine supports them.
 - Desktop backends use native on-screen rendered WebViews. Compose or Swing content cannot be drawn
   above the WebView on desktop platforms.

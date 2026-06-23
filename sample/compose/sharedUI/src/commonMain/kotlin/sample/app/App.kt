@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import top.kagg886.wvbridge.LoadingState
 import top.kagg886.wvbridge.WebView
 import top.kagg886.wvbridge.WebViewNavigator
-import top.kagg886.wvbridge.rememberWebViewState
+import top.kagg886.wvbridge.rememberWebViewController
 
 @Composable
 fun App() {
@@ -23,28 +23,28 @@ fun App() {
                 contentAlignment = Alignment.Center,
             ) {
                 var url by remember { mutableStateOf("https://www.baidu.com") }
-                val webViewState = rememberWebViewState(url)
+                val webViewController = rememberWebViewController(url)
 
                 var dialog by remember {
                     mutableStateOf("")
                 }
 
-                LaunchedEffect(webViewState.state) {
-                    val state = webViewState.state
-                    if (state is LoadingState.LoadingEnd && !state.success) {
-                        dialog = state.reason ?: "unknown error"
+                LaunchedEffect(webViewController.loadingState) {
+                    val loadingState = webViewController.loadingState
+                    if (loadingState is LoadingState.LoadingEnd && !loadingState.success) {
+                        dialog = loadingState.reason ?: "unknown error"
                     }
                 }
 
-                LaunchedEffect(webViewState.url) {
-                    if (webViewState.url.isNotBlank() && webViewState.url != url) {
-                        url = webViewState.url
+                LaunchedEffect(webViewController.url) {
+                    if (webViewController.url.isNotBlank() && webViewController.url != url) {
+                        url = webViewController.url
                     }
                 }
 
                 Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                    val progress = remember(webViewState.state) {
-                        (webViewState.state as? LoadingState.Loading)?.progress ?: 0f
+                    val progress = remember(webViewController.loadingState) {
+                        (webViewController.loadingState as? LoadingState.Loading)?.progress ?: 0f
                     }
                     if (progress != 0f) {
                         LinearProgressIndicator(
@@ -55,12 +55,12 @@ fun App() {
                     BrowserToolbar(
                         urlInput = url,
                         onUrlInputChange = { url = it },
-                        onSubmitUrl = { webViewState.navigator.loadUrl(url) },
-                        navigator = webViewState.navigator,
-                        isLoading = webViewState.state is LoadingState.Loading,
+                        onSubmitUrl = { webViewController.navigator.loadUrl(url) },
+                        navigator = webViewController.navigator,
+                        isLoading = webViewController.loadingState is LoadingState.Loading,
                     )
                     WebView(
-                        state = webViewState,
+                        controller = webViewController,
                         modifier = Modifier.fillMaxSize().padding(top = 10.dp),
                     )
                 }
@@ -99,7 +99,7 @@ private fun BrowserToolbar(
             Text("←")
         }
         IconButton(
-            onClick = { navigator.goForward(urlInput) },
+            onClick = { navigator.goForward() },
             enabled = navigator.canGoForward,
             modifier = Modifier.size(40.dp),
         ) {

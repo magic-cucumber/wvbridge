@@ -10,91 +10,91 @@ import java.util.function.BiConsumer
 import java.util.function.Consumer
 
 @Composable
-public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
-    state as SwingPanelState
+public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) {
+    controller as SwingPanelController
 
     DisposableEffect(Unit) {
         onDispose {
-            state.instance.close()
+            controller.instance.close()
         }
     }
 
     DisposableEffect(Unit) {
         val listener: Consumer<String> = {
-            state.state = LoadingState.Loading(0.0f)
-            state.url = it
+            controller.loadingState = LoadingState.Loading(0.0f)
+            controller.url = it
         }
 
-        state.instance.addPageLoadingStartListener(listener)
+        controller.instance.addPageLoadingStartListener(listener)
         onDispose {
-            state.instance.removePageLoadingStartListener(listener)
+            controller.instance.removePageLoadingStartListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         val listener: Consumer<String> = {
-            state.url = it
+            controller.url = it
         }
 
-        state.instance.addURLChangeListener(listener)
+        controller.instance.addURLChangeListener(listener)
         onDispose {
-            state.instance.removeURLChangeListener(listener)
+            controller.instance.removeURLChangeListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         val listener: Consumer<Float> = {
-            state.state = LoadingState.Loading(it)
+            controller.loadingState = LoadingState.Loading(it)
         }
 
-        state.instance.addPageLoadingProgressListener(listener)
+        controller.instance.addPageLoadingProgressListener(listener)
         onDispose {
-            state.instance.removePageLoadingProgressListener(listener)
+            controller.instance.removePageLoadingProgressListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         val listener: BiConsumer<Boolean, String?> = { success,reason->
-            state.state = LoadingState.LoadingEnd(success,reason)
+            controller.loadingState = LoadingState.LoadingEnd(success,reason)
         }
-        state.instance.addPageLoadingEndListener(listener)
+        controller.instance.addPageLoadingEndListener(listener)
         onDispose {
-            state.instance.removePageLoadingEndListener(listener)
+            controller.instance.removePageLoadingEndListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         val listener: Consumer<Boolean> = {
-            state._navigator.canGoBack = it
+            controller._navigator.canGoBack = it
         }
 
-        state.instance.addCanGoBackChangeListener(listener)
+        controller.instance.addCanGoBackChangeListener(listener)
 
         onDispose {
-            state.instance.removeCanGoBackChangeListener(listener)
+            controller.instance.removeCanGoBackChangeListener(listener)
         }
     }
 
     DisposableEffect(Unit) {
         val listener: Consumer<Boolean> = {
-            state._navigator.canGoForward = it
+            controller._navigator.canGoForward = it
         }
 
-        state.instance.addCanGoForwardChangeListener(listener)
+        controller.instance.addCanGoForwardChangeListener(listener)
 
         onDispose {
-            state.instance.removeCanGoForwardChangeListener(listener)
+            controller.instance.removeCanGoForwardChangeListener(listener)
         }
     }
 
-    LaunchedEffect(state.state) {
-        if (state.state == LoadingState.Ready) {
-            state.navigator.loadUrl(state.url)
+    LaunchedEffect(controller.loadingState) {
+        if (controller.loadingState == LoadingState.Ready) {
+            controller.navigator.loadUrl(controller.url)
         }
     }
 
     SwingPanel(
-        factory = { state.instance },
+        factory = { controller.instance },
         modifier = modifier,
     )
 }

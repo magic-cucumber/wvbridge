@@ -7,10 +7,10 @@ browser navigation.
 The common entry points are:
 
 - [WebView] to display the native WebView inside Compose UI.
-- [rememberWebViewState] to create and remember a [WebViewState].
-- [WebViewState.url] to observe the current top-level URL.
-- [WebViewState.state] to observe readiness and page loading progress through [LoadingState].
-- [WebViewState.navigator] to perform imperative navigation through [WebViewNavigator].
+- [rememberWebViewController] to create and remember a [WebViewController].
+- [webViewController.url] to observe the current top-level URL.
+- [WebViewController.loadingState] to observe readiness and page loading progress through [LoadingState].
+- [webViewController.navigator] to perform imperative navigation through [WebViewNavigator].
 
 ## Installation
 
@@ -72,43 +72,43 @@ Current JVM native runtime support is limited to:
 
 ## Simple Usage
 
-Create a remembered state and render [WebView]:
+Create a remembered controller and render [WebView]:
 
 ```kotlin
 import androidx.compose.ui.Modifier
 import top.kagg886.wvbridge.WebView
-import top.kagg886.wvbridge.rememberWebViewState
+import top.kagg886.wvbridge.rememberWebViewController
 
-val webViewState = rememberWebViewState("https://example.com")
+val webViewController = rememberWebViewController("https://example.com")
 
 WebView(
-    state = webViewState,
+    controller = webViewController,
     modifier = Modifier,
 )
 ```
 
-To navigate after the first load, use [WebViewState.navigator]:
+To navigate after the first load, use [webViewController.navigator]:
 
 ```kotlin
-webViewState.navigator.loadUrl("https://kotlinlang.org")
-webViewState.navigator.goBack()
-webViewState.navigator.goForward("")
-webViewState.navigator.refresh()
-webViewState.navigator.stop()
+webViewController.navigator.loadUrl("https://kotlinlang.org")
+webViewController.navigator.goBack()
+webViewController.navigator.goForward()
+webViewController.navigator.refresh()
+webViewController.navigator.stop()
 ```
 
 ## Typical State Flow
 
-- [rememberWebViewState] creates a [WebViewState] whose initial [WebViewState.state] is
+- [rememberWebViewController] creates a [WebViewController] whose initial [WebViewController.loadingState] is
   [LoadingState.NotReady].
-- When the native WebView is ready, the state moves to [LoadingState.Ready].
-- The initial URL is loaded automatically once the state becomes [LoadingState.Ready].
-- While a page is loading, the state becomes [LoadingState.Loading].
-- When the navigation finishes or fails, the state becomes [LoadingState.LoadingEnd].
+- When the native WebView is ready, the loading state moves to [LoadingState.Ready].
+- The initial URL is loaded automatically once the loading state becomes [LoadingState.Ready].
+- While a page is loading, the loading state becomes [LoadingState.Loading].
+- When the navigation finishes or fails, the loading state becomes [LoadingState.LoadingEnd].
 
 ## Notes
 
-- [WebViewState.url] is suitable for address-bar synchronization and may contain custom URL schemes
+- [webViewController.url] is suitable for address-bar synchronization and may contain custom URL schemes
   if the underlying native engine supports them.
 - Desktop backends use native on-screen rendered WebViews. Compose or Swing content cannot be drawn
   above the WebView on desktop platforms.

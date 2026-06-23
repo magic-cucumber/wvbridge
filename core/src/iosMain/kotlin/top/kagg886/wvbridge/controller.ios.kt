@@ -15,7 +15,7 @@ internal class AutoClosableWKWebView(public val delegate: WKWebView) : AutoClose
     override fun close(): Unit = Unit
 }
 
-internal class WKWebViewState(instance: AutoClosableWKWebView) : WebViewState<AutoClosableWKWebView>(instance) {
+internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewController<AutoClosableWKWebView>(instance) {
     internal val _navigator by lazy {
         WKWebViewNavigator(instance.delegate)
     }
@@ -35,7 +35,7 @@ internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavi
         return instance.canGoBack()
     }
 
-    override fun goForward(url: String): Boolean {
+    override fun goForward(): Boolean {
         instance.goForward()
         return instance.canGoForward()
     }
@@ -52,19 +52,19 @@ internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavi
 }
 
 @Composable
-public actual fun rememberWebViewState(url: String): WebViewState<*> {
-    val state = remember {
+public actual fun rememberWebViewController(url: String): WebViewController<*> {
+    val controller = remember {
         val wv = WKWebView()
         wv.configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         wv.configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-        WKWebViewState(AutoClosableWKWebView(wv))
+        WKWebViewController(AutoClosableWKWebView(wv))
     }
 
     LaunchedEffect(Unit) {
-        state.url = url
-        state.state = LoadingState.Ready
+        controller.url = url
+        controller.loadingState = LoadingState.Ready
     }
 
-    return state
+    return controller
 }

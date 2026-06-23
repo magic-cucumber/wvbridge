@@ -13,15 +13,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
-public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
-    state as AndroidWebViewState
+public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) {
+    controller as AndroidWebViewController
 
-    DisposableEffect(state) {
-        val webView = state.instance.instance
+    DisposableEffect(controller) {
+        val webView = controller.instance.instance
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
-                state.state = LoadingState.Loading(newProgress.coerceIn(0, 100) / 100f)
+                controller.loadingState = LoadingState.Loading(newProgress.coerceIn(0, 100) / 100f)
             }
         }
         onDispose {
@@ -29,32 +29,32 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    DisposableEffect(state) {
-        val webView = state.instance.instance
+    DisposableEffect(controller) {
+        val webView = controller.instance.instance
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                state.url = url ?: state.url
-                state.state = LoadingState.Loading(0f)
+                controller.url = url ?: controller.url
+                controller.loadingState = LoadingState.Loading(0f)
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
-                state.url = url ?: state.url
-                state._navigator.canGoBack = webView.canGoBack()
-                state._navigator.canGoForward = webView.canGoForward()
+                controller.url = url ?: controller.url
+                controller._navigator.canGoBack = webView.canGoBack()
+                controller._navigator.canGoForward = webView.canGoForward()
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                state.url = url ?: state.url
+                controller.url = url ?: controller.url
 
-                if (state.state !is LoadingState.LoadingEnd) {
-                    state.state = LoadingState.LoadingEnd(true, null)
+                if (controller.loadingState !is LoadingState.LoadingEnd) {
+                    controller.loadingState = LoadingState.LoadingEnd(true, null)
                 }
 
-                state._navigator.canGoBack = webView.canGoBack()
-                state._navigator.canGoForward = webView.canGoForward()
+                controller._navigator.canGoBack = webView.canGoBack()
+                controller._navigator.canGoForward = webView.canGoForward()
             }
 
             override fun onReceivedError(
@@ -64,13 +64,13 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
             ) {
                 super.onReceivedError(view, request, error)
                 if (request?.isForMainFrame != false) {
-                    state.state = LoadingState.LoadingEnd(
+                    controller.loadingState = LoadingState.LoadingEnd(
                         success = false,
                         reason = error?.description?.toString(),
                     )
 
-                    state._navigator.canGoBack = webView.canGoBack()
-                    state._navigator.canGoForward = webView.canGoForward()
+                    controller._navigator.canGoBack = webView.canGoBack()
+                    controller._navigator.canGoForward = webView.canGoForward()
                 }
             }
         }
@@ -80,14 +80,14 @@ public actual fun WebView(state: WebViewState<*>, modifier: Modifier) {
         }
     }
 
-    LaunchedEffect(state.state) {
-        if (state.state == LoadingState.Ready) {
-            state.navigator.loadUrl(state.url)
+    LaunchedEffect(controller.loadingState) {
+        if (controller.loadingState == LoadingState.Ready) {
+            controller.navigator.loadUrl(controller.url)
         }
     }
 
     AndroidView(
-        factory = { state.instance.instance },
+        factory = { controller.instance.instance },
         modifier = modifier,
     )
 }

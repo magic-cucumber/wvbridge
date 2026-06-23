@@ -67,36 +67,36 @@ kotlin {
 
 ## 快速使用
 
-创建一个 remembered state，然后渲染 `WebView`：
+创建一个 remembered controller，然后渲染 `WebView`：
 
 ```kotlin
 import androidx.compose.ui.Modifier
 import top.kagg886.wvbridge.WebView
-import top.kagg886.wvbridge.rememberWebViewState
+import top.kagg886.wvbridge.rememberWebViewController
 
-val webViewState = rememberWebViewState("https://example.com")
+val webViewController = rememberWebViewController("https://example.com")
 
 WebView(
-    state = webViewState,
+    controller = webViewController,
     modifier = Modifier,
 )
 ```
 
-基础导航通过 `WebViewState.navigator` 完成：
+基础导航通过 `webViewController.navigator` 完成：
 
 ```kotlin
-webViewState.navigator.loadUrl("https://kotlinlang.org")
-webViewState.navigator.goBack()
-webViewState.navigator.goForward("")
-webViewState.navigator.refresh()
-webViewState.navigator.stop()
+webViewController.navigator.loadUrl("https://kotlinlang.org")
+webViewController.navigator.goBack()
+webViewController.navigator.goForward()
+webViewController.navigator.refresh()
+webViewController.navigator.stop()
 ```
 
 更多特性请参考 [wvbridge.kagg886.top](https://wvbridge.kagg886.top)。
 
 ## 说明
 
-- `WebViewState.url` 很适合同步地址栏；如果底层原生引擎支持，也可以承载自定义 URL scheme。
+- `webViewController.url` 很适合同步地址栏；如果底层原生引擎支持，也可以承载自定义 URL scheme。
 - 桌面端后端使用的是原生 on-screen 渲染 WebView，因此不能在 WebView 上方叠放 Compose 或 Swing 内容。
 - 这个库刻意选择封装平台原生 WebView，而不是引入 Chromium 一类更重的浏览器内核。
 

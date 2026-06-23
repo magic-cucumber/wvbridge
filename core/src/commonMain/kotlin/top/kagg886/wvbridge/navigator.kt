@@ -1,7 +1,7 @@
 package top.kagg886.wvbridge
 
 /**
- * Common navigation controls for [WebViewState].
+ * Common navigation controls for [WebViewController].
  *
  * This API covers the basic browser operations exposed by all supported backends: moving backward
  * and forward in history, refreshing, stopping the current load, and loading a new URL.
@@ -31,20 +31,18 @@ public interface WebViewNavigator {
     /**
      * Moves to the next history entry.
      *
-     * @param url Reserved for API compatibility. Current implementations ignore this value and use
-     *   the native forward history entry.
      * @return `true` if another forward jump is still available after this navigation completes,
      *   `false` otherwise.
      */
-    public fun goForward(url: String): Boolean
+    public fun goForward(): Boolean
 
     /**
      * Reloads the most recently loaded page.
      *
      * This operation delegates to the native WebView's reload behavior. If the most recent
-     * navigation failed, [WebViewState.url] may contain that failed URL while this method reloads
+     * navigation failed, [WebViewController.url] may contain that failed URL while this method reloads
      * the last page that loaded successfully. To retry the most recently attempted URL instead,
-     * call [loadUrl] with [WebViewState.url]. After a successful navigation, both approaches reload
+     * call [loadUrl] with [WebViewController.url]. After a successful navigation, both approaches reload
      * the same URL.
      */
     public fun refresh()

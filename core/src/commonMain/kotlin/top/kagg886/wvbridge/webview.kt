@@ -19,11 +19,11 @@ import androidx.compose.ui.Modifier
  * solution instead. That tradeoff is intentionally out of scope here: this library prefers the
  * simplest possible wrapper around the native WebView shipped by each platform.
  *
- * @param state The remembered state that owns the native WebView instance.
+ * @param controller The remembered controller that owns the native WebView instance.
  * @param modifier The modifier applied to the host view.
  */
 @Composable
 public expect fun WebView(
-    state: WebViewState<*> = rememberWebViewState("about:blank"),
+    controller: WebViewController<*> = rememberWebViewController("about:blank"),
     modifier: Modifier = Modifier,
 )

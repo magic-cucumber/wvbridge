@@ -1,7 +1,7 @@
 package top.kagg886.wvbridge
 
 /**
- * Shared loading lifecycle definitions for [WebViewState].
+ * Shared loading lifecycle definitions for [WebViewController].
  *
  * ```text
  * +-----------+  +-------+  +---------+  +------------+
@@ -33,8 +33,8 @@ package top.kagg886.wvbridge
  * - [LoadingEnd] represents the terminal result of the current navigation, either success or
  *   failure.
  *
- * After the first load begins, a [WebViewState] usually alternates between [Loading] and
- * [LoadingEnd]. It does not normally return to [Ready] unless a brand new state instance is
+ * After the first load begins, a [WebViewController] usually alternates between [Loading] and
+ * [LoadingEnd]. It does not normally return to [Ready] unless a brand new controller instance is
  * created.
  */
 public sealed interface LoadingState {
