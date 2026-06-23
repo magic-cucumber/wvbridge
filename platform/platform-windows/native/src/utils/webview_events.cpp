@@ -42,29 +42,147 @@ std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs* ar
            std::to_wstring(static_cast<int>(status));
 }
 
-const wchar_t* format_process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND kind) {
+std::wstring format_named_constant(const wchar_t* name, int value) {
+    return std::wstring(name) + L"(" + std::to_wstring(value) + L")";
+}
+
+std::wstring format_process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND kind) {
     switch (kind) {
         case COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_SANDBOX_HELPER_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_PLUGIN_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         case COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_PPAPI_BROKER_PROCESS_EXITED",
+                static_cast<int>(kind)
+            );
         default:
-            return L"COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN";
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_KIND_UNKNOWN",
+                static_cast<int>(kind)
+            );
     }
+}
+
+std::wstring format_process_failed_reason(COREWEBVIEW2_PROCESS_FAILED_REASON reason) {
+    switch (reason) {
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_UNRESPONSIVE:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_UNRESPONSIVE",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_TERMINATED:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_TERMINATED",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_LAUNCH_FAILED:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_LAUNCH_FAILED",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_OUT_OF_MEMORY:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_OUT_OF_MEMORY",
+                static_cast<int>(reason)
+            );
+        case COREWEBVIEW2_PROCESS_FAILED_REASON_PROFILE_DELETED:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_PROFILE_DELETED",
+                static_cast<int>(reason)
+            );
+        default:
+            return format_named_constant(
+                L"COREWEBVIEW2_PROCESS_FAILED_REASON_UNKNOWN",
+                static_cast<int>(reason)
+            );
+    }
+}
+
+std::wstring format_process_failed_message(ICoreWebView2ProcessFailedEventArgs* args) {
+    COREWEBVIEW2_PROCESS_FAILED_KIND kind =
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
+    if (args) {
+        args->get_ProcessFailedKind(&kind);
+    }
+
+    std::wstring message = L"webview2.process.failed: Kind=" +
+                           format_process_failed_kind(kind);
+
+    ComPtr<ICoreWebView2ProcessFailedEventArgs2> args2;
+    if (!args || FAILED(args->QueryInterface(IID_PPV_ARGS(&args2))) || !args2) {
+        return message;
+    }
+
+    COREWEBVIEW2_PROCESS_FAILED_REASON reason =
+        COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED;
+    if (SUCCEEDED(args2->get_Reason(&reason))) {
+        message += L"; Reason=" + format_process_failed_reason(reason);
+    }
+
+    int exit_code = 0;
+    if (SUCCEEDED(args2->get_ExitCode(&exit_code))) {
+        message += L"; ExitCode=" + std::to_wstring(exit_code);
+    }
+
+    LPWSTR process_description = nullptr;
+    if (SUCCEEDED(args2->get_ProcessDescription(&process_description)) &&
+        process_description) {
+        if (process_description[0] != L'\0') {
+            message += L"; ProcessDescription=";
+            message += process_description;
+        }
+        CoTaskMemFree(process_description);
+    }
+
+    return message;
 }
 
 bool can_notify(WebViewContext* ctx) {
@@ -199,14 +317,10 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
             [ctx](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
                 if (!can_notify(ctx)) return S_OK;
 
-                COREWEBVIEW2_PROCESS_FAILED_KIND kind =
-                    COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
-                if (args) {
-                    args->get_ProcessFailedKind(&kind);
-                }
+                const std::wstring cause = format_process_failed_message(args);
                 notify_webview_fatal_error_to_jvm(
                     reinterpret_cast<jlong>(ctx),
-                    format_process_failed_kind(kind)
+                    cause.c_str()
                 );
                 return S_OK;
             }
