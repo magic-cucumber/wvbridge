@@ -82,7 +82,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
         return nullptr;
     }
 
-    NSString *stringValue = (result == [NSNull null]) ? @"null" : [result description];
+    NSString *stringValue = [result isKindOfClass:[NSString class]] ? (NSString *) result : [result description];
     const char *chars = [stringValue UTF8String];
     jstring output = env->NewStringUTF(chars ? chars : "");
     [result release];

@@ -14,6 +14,7 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":platform:platform-${hostTarget.name.lowercase()}"))
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
 }
 

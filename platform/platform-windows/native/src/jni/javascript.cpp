@@ -4,8 +4,6 @@
 
 namespace {
 
-constexpr const wchar_t *UNDEFINED_SENTINEL = L"__wvbridge_native_undefined_result__";
-
 std::wstring jstring_to_wstring(JNIEnv *env, jstring value) {
     if (!value) return L"";
     const char *chars = env->GetStringUTFChars(value, nullptr);
@@ -25,54 +23,6 @@ std::string wstring_to_utf8_local(const std::wstring &value) {
     int converted = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), out.data(), required, nullptr, nullptr);
     if (converted <= 0) return "";
     return out;
-}
-
-std::wstring js_string_literal(const std::wstring &value) {
-    std::wostringstream out;
-    out << L'"';
-    for (wchar_t ch: value) {
-        switch (ch) {
-            case L'\\':
-                out << L"\\\\";
-                break;
-            case L'"':
-                out << L"\\\"";
-                break;
-            case L'\b':
-                out << L"\\b";
-                break;
-            case L'\f':
-                out << L"\\f";
-                break;
-            case L'\n':
-                out << L"\\n";
-                break;
-            case L'\r':
-                out << L"\\r";
-                break;
-            case L'\t':
-                out << L"\\t";
-                break;
-            default:
-                if (ch < 0x20) {
-                    wchar_t buffer[7];
-                    swprintf_s(buffer, L"\\u%04X", static_cast<unsigned int>(ch));
-                    out << buffer;
-                } else {
-                    out << ch;
-                }
-        }
-    }
-    out << L'"';
-    return out.str();
-}
-
-std::wstring build_evaluate_script_source(const std::wstring &source) {
-    return L"(() => { const __wvbridge_result = (0, eval)("
-        + js_string_literal(source)
-        + L"); return __wvbridge_result === undefined ? "
-        + js_string_literal(UNDEFINED_SENTINEL)
-        + L" : __wvbridge_result; })()";
 }
 
 WebViewContext *require_context(JNIEnv *env, jlong handle) {
@@ -114,11 +64,10 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
         std::wstring value;
     };
 
-    const std::wstring executableSource = build_evaluate_script_source(source);
     auto completion = std::make_shared<std::promise<Result>>();
     auto future = completion->get_future();
 
-    webview2_thread_run_sync(ctx->thread, [ctx, executableSource, completion] {
+    webview2_thread_run_sync(ctx->thread, [ctx, source, completion] {
         if (!ctx->webview) {
             completion->set_value(Result{E_FAIL, false, L""});
             return;
@@ -131,7 +80,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
             }
         );
 
-        HRESULT hr = ctx->webview->ExecuteScript(executableSource.c_str(), callback.Get());
+        HRESULT hr = ctx->webview->ExecuteScript(source.c_str(), callback.Get());
         if (FAILED(hr)) {
             completion->set_value(Result{hr, false, L""});
         }
@@ -144,7 +93,6 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
     }
 
     if (!result.has_value) return nullptr;
-    if (result.value == js_string_literal(UNDEFINED_SENTINEL)) return nullptr;
     const std::string utf8 = wstring_to_utf8_local(result.value);
     return env->NewStringUTF(utf8.c_str());
 }

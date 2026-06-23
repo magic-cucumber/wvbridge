@@ -3,6 +3,8 @@ package top.kagg886.wvbridge
 import androidx.compose.runtime.*
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.bridge.buildJavaScriptBridgeEvaluationScript
+import top.kagg886.wvbridge.bridge.toJavaScriptBridgeValue
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 
 internal class SwingPanelController internal constructor(instance: WebViewBridgePanel) :
@@ -20,8 +22,9 @@ internal class SwingPanelController internal constructor(instance: WebViewBridge
 }
 
 internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePanel) : JavaScriptBridge {
-    override suspend fun evaluateScript(script: String): JavaScriptBridge.Value =
-        instance.evaluateScript(script).toJavaScriptValue()
+    override suspend fun evaluateScript(script: String): JavaScriptBridge.Value = instance.evaluateScript(
+        script = buildJavaScriptBridgeEvaluationScript(script)
+    )?.toJavaScriptBridgeValue() ?: JavaScriptBridge.Value.Undefined
 
     override suspend fun registerDocumentStartHook(script: String): CloseHandle {
         val hookId = instance.registerDocumentStartHook(script)
@@ -34,13 +37,6 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                 instance.unregisterDocumentStartHook(hookId)
             }
         }
-    }
-
-    private fun String?.toJavaScriptValue(): JavaScriptBridge.Value = when (this) {
-        null -> JavaScriptBridge.Value.Undefined
-        "null" -> JavaScriptBridge.Value.Null
-        "undefined" -> JavaScriptBridge.Value.Undefined
-        else -> JavaScriptBridge.Value.ScriptObject(this)
     }
 }
 

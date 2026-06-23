@@ -1,5 +1,6 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
+import kotlinx.coroutines.runBlocking
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -253,13 +254,15 @@ private class JavaScriptBridgeDemoPane : JPanel(BorderLayout(8, 8)) {
         val script = JOptionPane.showInputDialog(
             this,
             "输入要执行的 JavaScript",
-            "document.title",
+            "return document.title",
         ) ?: return
 
         runWebViewAction("Evaluate script failed") {
-            val result = panel.evaluateScript(script)
-            log("script result: ${result ?: "null"}")
-            showMessage(result ?: "null")
+            val result = runBlocking {
+                top.kagg886.wvbridge.SwingPanelJavaScriptBridge(panel).evaluateScript(script)
+            }
+            log("script result: $result")
+            showMessage(result.toString())
         }
     }
 

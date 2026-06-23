@@ -3,7 +3,6 @@ package top.kagg886.wvbridge
 import androidx.compose.runtime.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
-import platform.Foundation.NSNull
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.WebKit.WKUserScript
@@ -11,6 +10,8 @@ import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.bridge.buildJavaScriptBridgeEvaluationScript
+import top.kagg886.wvbridge.bridge.toJavaScriptBridgeValue
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -38,11 +39,11 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
 
     override suspend fun evaluateScript(script: String): JavaScriptBridge.Value =
         suspendCancellableCoroutine { continuation ->
-            instance.evaluateJavaScript(script) { result, error ->
+            instance.evaluateJavaScript(buildJavaScriptBridgeEvaluationScript(script)) { result, error ->
                 if (error != null) {
                     continuation.resumeWithException(error.toException())
                 } else {
-                    continuation.resume(result.toJavaScriptValue())
+                    continuation.resume(result?.toString().toJavaScriptBridgeValue())
                 }
             }
         }
@@ -76,12 +77,6 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             forMainFrameOnly = false,
         )
         instance.configuration.userContentController.addUserScript(userScript)
-    }
-
-    private fun Any?.toJavaScriptValue(): JavaScriptBridge.Value = when (this) {
-        null -> JavaScriptBridge.Value.Undefined
-        is NSNull -> JavaScriptBridge.Value.Null
-        else -> JavaScriptBridge.Value.ScriptObject(toString())
     }
 
     private fun NSError.toException(): RuntimeException =
