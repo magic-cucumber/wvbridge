@@ -115,6 +115,6 @@ webViewController.navigator.stop()
 | URL 监听                      | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 加载状态监听                      | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 同步执行 JS 代码                  | ✅       | 🚧  | ✅           | 🚧        | 🚧        |
-| 添加网页脚本（document-start hook） | 🚧      | 🚧  | ✅           | 🚧        | 🚧        |
+| 添加网页脚本（document-start hook） | ✅       | 🚧  | ✅           | 🚧        | 🚧        |
 | 报错自动销毁                      | 🚧      | 🚧  | ✅           | 🚧        | 🚧        |
 | 离屏渲染                        | ✅ 系统能力  | 🧪  | ❌           | ❌         | ❌         |

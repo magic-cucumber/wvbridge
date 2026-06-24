@@ -118,6 +118,6 @@ Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitation
 | URL listener                                          | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Loading state listener                                | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Synchronous JS execution                              | ✅                   | 🚧  | ✅           | 🚧        | 🚧        |
-| Add page script (document-start hook)                 | 🚧                  | 🚧  | ✅           | 🚧        | 🚧        |
+| Add page script (document-start hook)                 | ✅                   | 🚧  | ✅           | 🚧        | 🚧        |
 | Auto destroy on error                                 | 🚧                  | 🚧  | 🚧          | ✅         | 🚧        |
 | Off-screen rendering                                  | ✅ System capability | 🧪  | ❌           | ❌         | ❌         |

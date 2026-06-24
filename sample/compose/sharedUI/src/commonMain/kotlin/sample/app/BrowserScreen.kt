@@ -12,7 +12,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -21,16 +23,23 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import top.kagg886.wvbridge.LoadingState
 import top.kagg886.wvbridge.WebView
 import top.kagg886.wvbridge.WebViewController
 import top.kagg886.wvbridge.WebViewNavigator
+import top.kagg886.wvbridge.bridge.CloseHandle
 
 @Composable
 internal fun BrowserScreen(
@@ -40,6 +49,16 @@ internal fun BrowserScreen(
     onRunJavaScript: () -> Unit,
     onMessage: (title: String, message: String) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    var documentStartHook by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
+
+    DisposableEffect(webViewController) {
+        onDispose {
+            documentStartHook?.close()
+            documentStartHook = null
+        }
+    }
+
     LaunchedEffect(webViewController.loadingState) {
         val loadingState = webViewController.loadingState
         if (loadingState is LoadingState.LoadingEnd && !loadingState.success) {
@@ -68,6 +87,31 @@ internal fun BrowserScreen(
             onUrlInputChange = onUrlChange,
             onSubmitUrl = { webViewController.navigator.loadUrl(url) },
             onRunJavaScript = onRunJavaScript,
+            onInstallDocumentStartHook = {
+                scope.launch {
+                    val previousHook = documentStartHook
+                    val result = runCatching {
+                        webViewController.bridge.registerDocumentStartHook(DocumentStartHookScript)
+                    }
+                    result.onSuccess { hook ->
+                        previousHook?.close()
+                        documentStartHook = hook
+                        onMessage("Document Start Hook", "Installed. Reload the page to run the hook.")
+                    }.onFailure { error ->
+                        onMessage("Document Start Hook", error.message ?: error.toString())
+                    }
+                }
+            },
+            onRemoveDocumentStartHook = {
+                runCatching {
+                    documentStartHook?.close()
+                }.onSuccess {
+                    documentStartHook = null
+                    onMessage("Document Start Hook", "Removed.")
+                }.onFailure { error ->
+                    onMessage("Document Start Hook", error.message ?: error.toString())
+                }
+            },
             navigator = webViewController.navigator,
             isLoading = webViewController.loadingState is LoadingState.Loading,
         )
@@ -84,6 +128,8 @@ private fun BrowserToolbar(
     onUrlInputChange: (String) -> Unit,
     onSubmitUrl: () -> Unit,
     onRunJavaScript: () -> Unit,
+    onInstallDocumentStartHook: () -> Unit,
+    onRemoveDocumentStartHook: () -> Unit,
     navigator: WebViewNavigator,
     isLoading: Boolean,
 ) {
@@ -133,6 +179,42 @@ private fun BrowserToolbar(
                 text("Run JavaScript")
                 onClick(onRunJavaScript)
             }
+            item {
+                icon(Icons.Filled.Add)
+                text("Insert document start hook")
+                onClick(onInstallDocumentStartHook)
+            }
+            item {
+                icon(Icons.Filled.Delete)
+                text("Remove document start hook")
+                onClick(onRemoveDocumentStartHook)
+            }
         }
     }
 }
+
+private val DocumentStartHookScript = """
+    const appendHookDiv = () => {
+        const div = document.createElement("div");
+        div.textContent = "Inserted by wvbridge document-start hook";
+        div.style.cssText = [
+            "position: fixed",
+            "right: 16px",
+            "bottom: 16px",
+            "z-index: 2147483647",
+            "padding: 10px 12px",
+            "background: #0f766e",
+            "color: white",
+            "font: 14px sans-serif",
+            "border-radius: 6px",
+            "box-shadow: 0 4px 14px rgba(0,0,0,.25)"
+        ].join(";");
+        document.body.appendChild(div);
+    };
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", appendHookDiv, { once: true });
+    } else {
+        appendHookDiv();
+    }
+""".trimIndent()
