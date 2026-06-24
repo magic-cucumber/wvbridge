@@ -117,7 +117,7 @@ Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitation
 | Basic navigation (forward, back, load, stop, refresh) | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | URL listener                                          | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Loading state listener                                | ✅                   | ✅   | ✅           | ✅         | ✅         |
-| Synchronous JS execution                              | ✅                   | 🚧  | ✅           | 🚧        | 🚧        |
-| Add page script (document-start hook)                 | ✅                   | 🚧  | ✅           | 🚧        | 🚧        |
+| Synchronous JS execution                              | ✅                   | ✅   | ✅           | 🚧        | ✅         |
+| Add page script (document-start hook)                 | ✅                   | ✅   | ✅           | 🚧        | ✅         |
 | Auto destroy on error                                 | 🚧                  | 🚧  | 🚧          | ✅         | 🚧        |
 | Off-screen rendering                                  | ✅ System capability | 🧪  | ❌           | ❌         | ❌         |
