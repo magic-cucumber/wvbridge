@@ -1,9 +1,12 @@
 package top.kagg886.wvbridge
 
 import androidx.compose.runtime.*
+import kotlinx.coroutines.suspendCancellableCoroutine
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
+import javax.swing.SwingUtilities
+import kotlin.coroutines.resume
 
 internal class SwingPanelController internal constructor(instance: WebViewBridgePanel) :
     WebViewController<WebViewBridgePanel>(instance) {
@@ -20,11 +23,15 @@ internal class SwingPanelController internal constructor(instance: WebViewBridge
 }
 
 internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePanel) : JavaScriptBridge {
-    override suspend fun evaluateScript(script: String): String? = instance.evaluateScript(script)
+    override suspend fun evaluateScript(script: String): String? = suspendCancellableCoroutine { c ->
+        SwingUtilities.invokeLater {
+            c.resume(instance.evaluateScript(script))
+        }
+    }
 
-    override suspend fun registerDocumentStartHook(script: String): CloseHandle {
+    override suspend fun registerDocumentStartHook(script: String): CloseHandle = suspendCancellableCoroutine {
         val hookId = instance.registerDocumentStartHook(script)
-        return object : CloseHandle {
+        it.resume(object : CloseHandle {
             private var closed = false
 
             override fun close() {
@@ -32,7 +39,7 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                 closed = true
                 instance.unregisterDocumentStartHook(hookId)
             }
-        }
+        })
     }
 }
 
