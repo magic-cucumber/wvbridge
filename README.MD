@@ -112,12 +112,12 @@ More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.
 
 Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitations; 🚧 Under construction; 🧪 Untested.
 
-| Feature | Android | iOS | Windows JVM | Linux JVM | macOS JVM |
-| --- | --- | --- | --- | --- | --- |
-| Basic navigation (forward, back, load, stop, refresh) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| URL listener | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Loading state listener | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Synchronous JS execution | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| Add page script (document-start hook) | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| Auto destroy on error | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| Off-screen rendering | ✅ System capability | 🧪 | ❌ | ❌ | ❌ |
+| Feature                                               | Android             | iOS | Windows JVM | Linux JVM | macOS JVM |
+|-------------------------------------------------------|---------------------|-----|-------------|-----------|-----------|
+| Basic navigation (forward, back, load, stop, refresh) | ✅                   | ✅   | ✅           | ✅         | ✅         |
+| URL listener                                          | ✅                   | ✅   | ✅           | ✅         | ✅         |
+| Loading state listener                                | ✅                   | ✅   | ✅           | ✅         | ✅         |
+| Synchronous JS execution                              | ✅                   | 🚧  | ✅           | 🚧        | 🚧        |
+| Add page script (document-start hook)                 | 🚧                  | 🚧  | ✅           | 🚧        | 🚧        |
+| Auto destroy on error                                 | 🚧                  | 🚧  | 🚧          | ✅         | 🚧        |
+| Off-screen rendering                                  | ✅ System capability | 🧪  | ❌           | ❌         | ❌         |

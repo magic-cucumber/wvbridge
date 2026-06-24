@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -126,6 +127,12 @@ private fun BrowserToolbar(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { onSubmitUrl() }),
         )
-        PlatformActionsMenu(onRunJavaScript = onRunJavaScript)
+        PlatformActionsMenu {
+            item {
+                icon(Icons.Filled.Code)
+                text("Run JavaScript")
+                onClick(onRunJavaScript)
+            }
+        }
     }
 }

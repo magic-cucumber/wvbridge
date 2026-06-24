@@ -30,9 +30,10 @@ internal actual fun PlatformDialog(
 
 @Composable
 internal actual fun PlatformActionsMenu(
-    onRunJavaScript: () -> Unit,
+    content: PlatformActionsMenuScope.() -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val items = PlatformActionsMenuScope().apply(content).items
 
     IconButton(
         onClick = { expanded = true },
@@ -44,12 +45,19 @@ internal actual fun PlatformActionsMenu(
         expanded = expanded,
         onDismissRequest = { expanded = false },
     ) {
-        DropdownMenuItem(
-            text = { Text("Run JavaScript") },
-            onClick = {
-                expanded = false
-                onRunJavaScript()
-            },
-        )
+        items.forEach { item ->
+            DropdownMenuItem(
+                text = { Text(item.text) },
+                onClick = {
+                    expanded = false
+                    item.onClick()
+                },
+                leadingIcon = item.icon?.let { icon ->
+                    {
+                        Icon(icon, contentDescription = item.text)
+                    }
+                },
+            )
+        }
     }
 }

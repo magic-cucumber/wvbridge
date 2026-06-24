@@ -39,8 +39,10 @@ internal actual fun PlatformDialog(
 
 @Composable
 internal actual fun PlatformActionsMenu(
-    onRunJavaScript: () -> Unit,
+    content: PlatformActionsMenuScope.() -> Unit,
 ) {
+    val items = PlatformActionsMenuScope().apply(content).items
+
     SwingPanel(
         modifier = Modifier.size(40.dp),
         factory = {
@@ -54,11 +56,13 @@ internal actual fun PlatformActionsMenu(
             button.actionListeners.forEach(button::removeActionListener)
             button.addActionListener {
                 JPopupMenu().apply {
-                    add(
-                        JMenuItem("Run JavaScript").apply {
-                            addActionListener { onRunJavaScript() }
-                        }
-                    )
+                    items.forEach { item ->
+                        add(
+                            JMenuItem(item.text).apply {
+                                addActionListener { item.onClick() }
+                            }
+                        )
+                    }
                 }.show(button, 0, button.height)
             }
         },
