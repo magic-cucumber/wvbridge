@@ -23,10 +23,13 @@ kotlin {
             api("org.jetbrains.compose.ui:ui:1.10.1")
             api("org.jetbrains.compose.foundation:foundation:1.10.1")
             api("org.jetbrains.compose.material3:material3:1.10.0-alpha05")
-            implementation(project(":core"))
+            api("org.jetbrains.compose.material:material-icons-extended:1.7.3")
+            implementation("org.jetbrains.androidx.navigation3:navigation3-ui:1.1.1")
+            implementation(project(":jsbridge"))
         }
 
         jvmMain.dependencies {
+            implementation(compose.desktop.currentOs)
             implementation(project(":platform:platform-${hostTarget.name.lowercase()}"))
         }
     }

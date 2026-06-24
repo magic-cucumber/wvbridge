@@ -16,4 +16,5 @@ dokka {
 
 dependencies {
     dokka(project(":core"))
+    dokka(project(":jsbridge"))
 }

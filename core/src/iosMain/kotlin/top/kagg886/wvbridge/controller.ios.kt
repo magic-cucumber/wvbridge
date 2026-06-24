@@ -10,8 +10,6 @@ import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
-import top.kagg886.wvbridge.bridge.buildJavaScriptBridgeEvaluationScript
-import top.kagg886.wvbridge.bridge.toJavaScriptBridgeValue
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -37,13 +35,13 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
     private var nextDocumentStartHookId = 0L
     private val documentStartHooks = linkedMapOf<Long, String>()
 
-    override suspend fun evaluateScript(script: String): JavaScriptBridge.Value =
+    override suspend fun evaluateScript(script: String): String? =
         suspendCancellableCoroutine { continuation ->
-            instance.evaluateJavaScript(buildJavaScriptBridgeEvaluationScript(script)) { result, error ->
+            instance.evaluateJavaScript(script) { result, error ->
                 if (error != null) {
                     continuation.resumeWithException(error.toException())
                 } else {
-                    continuation.resume(result?.toString().toJavaScriptBridgeValue())
+                    continuation.resume(result?.toString())
                 }
             }
         }

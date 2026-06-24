@@ -1,8 +1,5 @@
 package top.kagg886.wvbridge.internal
 
-import top.kagg886.wvbridge.bridge.JavaScriptBridge
-import top.kagg886.wvbridge.bridge.buildJavaScriptBridgeEvaluationScript
-import top.kagg886.wvbridge.bridge.toJavaScriptBridgeValue
 import java.awt.Canvas
 import java.awt.Color
 import java.awt.Graphics

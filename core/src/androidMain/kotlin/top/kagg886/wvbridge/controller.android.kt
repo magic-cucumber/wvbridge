@@ -19,8 +19,6 @@ import kotlin.coroutines.startCoroutine
 import kotlin.coroutines.suspendCoroutine
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
-import top.kagg886.wvbridge.bridge.buildJavaScriptBridgeEvaluationScript
-import top.kagg886.wvbridge.bridge.toJavaScriptBridgeValue
 
 @JvmInline
 internal value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
@@ -43,11 +41,11 @@ internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebView
 internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScriptBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    override suspend fun evaluateScript(script: String): JavaScriptBridge.Value =
+    override suspend fun evaluateScript(script: String): String? =
         onMainThread {
             suspendCancellableCoroutine { continuation ->
-                instance.evaluateJavascript(buildJavaScriptBridgeEvaluationScript(script)) { result ->
-                    continuation.resume(result.toJavaScriptBridgeValue())
+                instance.evaluateJavascript(script) { result ->
+                    continuation.resume(result)
                 }
             }
         }

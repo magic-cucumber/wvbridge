@@ -1,4 +1,4 @@
-package top.kagg886.wvbridge.bridge
+package top.kagg886.wvbridge.js
 
 import kotlin.io.encoding.Base64
 
@@ -135,7 +135,7 @@ internal fun buildJavaScriptBridgeEvaluationScript(script: String): String =
             try {
                 const script = new TextDecoder().decode(
                     Uint8Array.from(
-                        atob("$${Base64.Default.encode(script.encodeToByteArray())}"),
+                        atob("$${Base64.encode(script.encodeToByteArray())}"),
                         char => char.charCodeAt(0)
                     )
                 );
@@ -177,8 +177,8 @@ internal fun buildJavaScriptBridgeEvaluationScript(script: String): String =
         })()
     """.trimIndent()
 
-internal fun String?.toJavaScriptBridgeValue(): JavaScriptBridge.Value {
-    if (this == null) return JavaScriptBridge.Value.Undefined
+public fun String?.toJavaScriptBridgeValue(): Value {
+    if (this == null) return Value.Undefined
 
 
     val value = run {
@@ -200,14 +200,14 @@ internal fun String?.toJavaScriptBridgeValue(): JavaScriptBridge.Value {
     val payload = value.substring(typeIndex + 2)
 
     return when (value[typeIndex]) {
-        'U' -> JavaScriptBridge.Value.Undefined
-        'N' -> JavaScriptBridge.Value.Null
-        'S' -> JavaScriptBridge.Value.Serializable(
+        'U' -> Value.Undefined
+        'N' -> Value.Null
+        'S' -> Value.Serializable(
             decodeBase64UrlUtf8(payload) ?: error("decode failed, result is $this")
         )
 
         'O' -> parseObject(payload) ?: error("decode failed, result is $this")
-        'E' -> JavaScriptBridge.Value.Error(
+        'E' -> Value.Error(
             stacktrace = decodeBase64UrlUtf8(payload) ?: error("decode failed, result is $this")
         )
 
@@ -221,14 +221,14 @@ internal fun decodeBase64UrlUtf8(value: String): String? =
         Base64.UrlSafe.decode(padded).decodeToString()
     }.getOrNull()
 
-internal fun parseObject(payload: String): JavaScriptBridge.Value.ScriptObject? {
+internal fun parseObject(payload: String): Value.ScriptObject? {
     val separator = payload.indexOf(':')
     if (separator < 0) return null
 
     val type = decodeBase64UrlUtf8(payload.substring(0, separator)) ?: return null
     val value = decodeBase64UrlUtf8(payload.substring(separator + 1)) ?: return null
 
-    return JavaScriptBridge.Value.ScriptObject(
+    return Value.ScriptObject(
         type = type,
         value = value
     )
