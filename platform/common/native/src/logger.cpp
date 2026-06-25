@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -30,6 +31,7 @@ std::mutex g_logger_queue_mutex;
 std::condition_variable g_logger_queue_changed;
 std::deque<LoggerMessage> g_logger_queue;
 bool g_logger_shutdown = true;
+bool g_logger_cleanup_registered = false;
 
 const char* file_name_from_path(const char* file) {
     if (file == nullptr) return "";
@@ -248,6 +250,11 @@ extern "C" const char* logger_location_tag(const char* file, int line) {
 
 extern "C" void logger_on_load() {
     std::lock_guard<std::mutex> thread_lock(g_logger_thread_mutex);
+
+    if (!g_logger_cleanup_registered) {
+        std::atexit(logger_on_unload);
+        g_logger_cleanup_registered = true;
+    }
 
     {
         std::lock_guard<std::mutex> queue_lock(g_logger_queue_mutex);
