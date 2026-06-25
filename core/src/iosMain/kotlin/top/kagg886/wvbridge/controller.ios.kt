@@ -10,18 +10,26 @@ import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.util.LoggerReceiver
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal class AutoClosableWKWebView(public val delegate: WKWebView) : AutoCloseable {
-    override fun close(): Unit = Unit
+    override fun close() {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "close")
+    }
+    private companion object {
+        private const val TAG = "AutoCloseWKWV"
+    }
 }
 
 internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewController<AutoClosableWKWebView>(instance) {
     internal val _bridge by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKJavaScriptBridge")
         WKJavaScriptBridge(instance.delegate)
     }
     internal val _navigator by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKWebViewNavigator")
         WKWebViewNavigator(instance.delegate)
     }
     override val navigator: WebViewNavigator
@@ -29,25 +37,35 @@ internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewCon
     override val bridge: JavaScriptBridge
         get() = _bridge
 
+    private companion object {
+        private const val TAG = "WKVWCtrl"
+    }
 }
 
 internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptBridge {
     private var nextDocumentStartHookId = 0L
     private val documentStartHooks = linkedMapOf<Long, String>()
 
-    override suspend fun evaluateScript(script: String): String? =
-        suspendCancellableCoroutine { continuation ->
+    override suspend fun evaluateScript(script: String): String? {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "evaluateScript: script=$script")
+        return suspendCancellableCoroutine { continuation ->
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: calling evaluateJavaScript")
             instance.evaluateJavaScript(script) { result, error ->
                 if (error != null) {
+                    LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "evaluateScript: error=${error.localizedDescription}")
                     continuation.resumeWithException(error.toException())
                 } else {
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: success, result=${result?.toString()}")
                     continuation.resume(result?.toString())
                 }
             }
         }
+    }
 
     override suspend fun registerDocumentStartHook(script: String): CloseHandle {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook: script=$script")
         val id = nextDocumentStartHookId++
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: assigned id=$id")
         documentStartHooks[id] = script
         addDocumentStartUserScript(script)
 
@@ -55,30 +73,45 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             private var closed = false
 
             override fun close() {
-                if (closed) return
+                LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: id=$id")
+                if (closed) {
+                    LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: id=$id, already closed")
+                    return
+                }
                 closed = true
                 documentStartHooks.remove(id)
+                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removed id=$id, triggering rebuild")
                 rebuildDocumentStartUserScripts()
             }
         }
     }
 
     private fun rebuildDocumentStartUserScripts() {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "rebuildDocumentStartUserScripts: count=${documentStartHooks.size}")
         instance.configuration.userContentController.removeAllUserScripts()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "rebuildDocumentStartUserScripts: user scripts removed, re-adding hooks")
         documentStartHooks.values.forEach(::addDocumentStartUserScript)
     }
 
     private fun addDocumentStartUserScript(script: String) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "addDocumentStartUserScript: script=$script")
         val userScript = WKUserScript(
             source = script,
             injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
             forMainFrameOnly = false,
         )
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addDocumentStartUserScript: WKUserScript created, adding to userContentController")
         instance.configuration.userContentController.addUserScript(userScript)
     }
 
-    private fun NSError.toException(): RuntimeException =
-        RuntimeException("WKWebView JavaScript evaluation failed: $localizedDescription")
+    private fun NSError.toException(): RuntimeException {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "toException: description=$localizedDescription")
+        return RuntimeException("WKWebView JavaScript evaluation failed: $localizedDescription")
+    }
+
+    private companion object {
+        private const val TAG = "WKJSBridge"
+    }
 }
 
 internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavigator {
@@ -88,29 +121,48 @@ internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavi
         internal set
 
     override fun goBack(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goBack")
         instance.goBack()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goBack: after goBack, canGoBack=${instance.canGoBack()}")
         return instance.canGoBack()
     }
 
     override fun goForward(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goForward")
         instance.goForward()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goForward: after goForward, canGoForward=${instance.canGoForward()}")
         return instance.canGoForward()
     }
 
     override fun refresh() {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "refresh")
         instance.reload()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "refresh: reload called")
     }
 
-    override fun stop(): Unit = instance.stopLoading()
+    override fun stop() {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "stop")
+        instance.stopLoading()
+    }
 
     override fun loadUrl(url: String) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "loadUrl: url=$url")
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "loadUrl: creating NSURLRequest")
         instance.loadRequest(NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!))
+    }
+
+    private companion object {
+        private const val TAG = "WKWebViewNav"
     }
 }
 
+private val TAG_RWVC = "RememberWVCtrl"
+
 @Composable
 public actual fun rememberWebViewController(url: String): WebViewController<*> {
+    LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: url=$url")
     val controller = remember {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: creating WKWebView")
         val wv = WKWebView()
         wv.configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         wv.configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
@@ -119,6 +171,7 @@ public actual fun rememberWebViewController(url: String): WebViewController<*> {
     }
 
     LaunchedEffect(Unit) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: LaunchedEffect launching, setting url=$url")
         controller.url = url
         controller.loadingState = LoadingState.Ready
     }

@@ -19,76 +19,121 @@ import kotlin.coroutines.startCoroutine
 import kotlin.coroutines.suspendCoroutine
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.util.LoggerReceiver
+
+private const val REMEMBER_TAG = "RememberWebViewController"
 
 @JvmInline
 internal value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
-    override fun close(): Unit = Unit
+    override fun close() {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close")
+    }
+    internal companion object {
+        private const val TAG = "AutoClosableWebView"
+    }
 }
 
 internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
     internal val _bridge by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "_bridge: lazy init")
         AndroidJavaScriptBridge(delegate.instance)
     }
     internal val _navigator by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "_navigator: lazy init")
         AndroidWebViewNavigator(delegate.instance)
     }
     override val navigator: WebViewNavigator
-        get() = _navigator
+        get() {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: getter")
+            return _navigator
+        }
     override val bridge: JavaScriptBridge
-        get() = _bridge
+        get() {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: getter")
+            return _bridge
+        }
+
+    internal companion object {
+        private const val TAG = "AndroidWebViewController"
+    }
 }
 
 internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScriptBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    override suspend fun evaluateScript(script: String): String? =
-        onMainThread {
+    override suspend fun evaluateScript(script: String): String? {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "evaluateScript: script=$script")
+        return onMainThread {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: on main thread, evaluating")
             suspendCancellableCoroutine { continuation ->
                 instance.evaluateJavascript(script) { result ->
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: result=$result")
                     continuation.resume(result)
                 }
             }
         }
+    }
 
-    override suspend fun registerDocumentStartHook(script: String): CloseHandle =
-        onMainThread {
+    override suspend fun registerDocumentStartHook(script: String): CloseHandle {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook: script=$script")
+        return onMainThread {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: on main thread")
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerDocumentStartHook: DOCUMENT_START_SCRIPT not supported")
                 throw UnsupportedOperationException("Android WebView document-start script injection is not supported")
             }
 
             val handler = WebViewCompat.addDocumentStartJavaScript(instance, script, setOf("*"))
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: handler=$handler")
             object : CloseHandle {
                 private var closed = false
 
                 override fun close() {
-                    if (closed) return
+                    LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: closed=$closed")
+                    if (closed) {
+                        LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
+                        return
+                    }
                     closed = true
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removing handler")
                     runOnMainThread {
                         handler.remove()
+                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: handler removed")
                     }
                 }
             }
         }
+    }
 
     private suspend fun <T> onMainThread(block: suspend () -> T): T {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onMainThread")
         if (Looper.myLooper() == Looper.getMainLooper()) {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: already on main thread, executing directly")
             return block()
         }
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: posting to main thread")
         return suspendCancellableCoroutine { continuation ->
             mainHandler.post {
+                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: executing block on main thread")
                 block.startCoroutine(continuation)
             }
         }
     }
 
     private fun runOnMainThread(block: () -> Unit) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "runOnMainThread")
         if (Looper.myLooper() == Looper.getMainLooper()) {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "runOnMainThread: already on main thread, executing directly")
             block()
         } else {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "runOnMainThread: posting to main thread")
             mainHandler.post(block)
         }
     }
 
+    internal companion object {
+        private const val TAG = "AndroidJavaScriptBridge"
+    }
 }
 
 internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewNavigator {
@@ -98,27 +143,48 @@ internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewN
         internal set
 
     override fun goBack(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goBack")
         instance.goBack()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goBack: instance.goBack() called")
         return instance.canGoBack()
     }
 
     override fun goForward(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goForward")
         instance.goForward()
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goForward: instance.goForward() called")
         return instance.canGoForward()
     }
 
-    override fun refresh(): Unit = instance.reload()
-    override fun stop(): Unit = instance.stopLoading()
+    override fun refresh(): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "refresh")
+        instance.reload()
+    }
 
-    override fun loadUrl(url: String): Unit = instance.loadUrl(url)
+    override fun stop(): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "stop")
+        instance.stopLoading()
+    }
+
+    override fun loadUrl(url: String): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "loadUrl: url=$url")
+        instance.loadUrl(url)
+    }
+
+    internal companion object {
+        private const val TAG = "AndroidWebViewNavigator"
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 public actual fun rememberWebViewController(url: String): WebViewController<*> {
+    LoggerReceiver.log(LoggerReceiver.Level.INFO, REMEMBER_TAG, "rememberWebViewController: url=$url")
     val ctx = LocalContext.current
+    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: ctx=$ctx")
 
     val controller = remember {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: creating WebView")
         val wv = WebView(ctx)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
@@ -128,8 +194,10 @@ public actual fun rememberWebViewController(url: String): WebViewController<*> {
     }
 
     LaunchedEffect(Unit) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, REMEMBER_TAG, "rememberWebViewController: LaunchedEffect url=$url")
         controller.url = url
         controller.loadingState = LoadingState.Ready
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: set loadingState=Ready")
     }
 
     return controller
