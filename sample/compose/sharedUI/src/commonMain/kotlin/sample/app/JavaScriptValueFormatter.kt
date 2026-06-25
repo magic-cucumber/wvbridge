@@ -1,6 +1,6 @@
 package sample.app
 
-import top.kagg886.wvbridge.js.Value
+import top.kagg886.wvbridge.js.protocol.Value
 
 internal fun Value.formatForDisplay(): String = when (this) {
     Value.Null -> "null"
