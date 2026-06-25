@@ -14,6 +14,7 @@ import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
 import top.kagg886.wvbridge.internal.listener.NativeBridge
+import top.kagg886.wvbridge.internal.listener.NativeLoggerReceiver
 
 /**
  * WebView 页面加载生命周期说明：
@@ -99,6 +100,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     internal val pageLoadingEndListener = CopyOnWriteArraySet<BiConsumer<Boolean, String?>>()
     internal val canGoBackChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
     internal val canGoForwardChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
+    internal val loggerReceiver = CopyOnWriteArraySet<NativeLoggerReceiver>()
 
     internal val closeListener = CopyOnWriteArraySet<Consumer<String?>>()
 
@@ -172,6 +174,16 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     public fun removeWebViewCloseListener(handle: Consumer<String?>): Unit =
         check(closeListener.remove(handle)) {
             "webview close listener: [$handle] not yet exists"
+        }
+
+    public fun addNativeLogger(handle: NativeLoggerReceiver): Unit =
+        check(loggerReceiver.add(handle)) {
+            "native logger: [$handle] already added"
+        }
+
+    public fun removeNativeLogger(handle: NativeLoggerReceiver): Unit =
+        check(loggerReceiver.remove(handle)) {
+            "native logger: [$handle] not yet exists"
         }
 
     override fun removeNotify() {

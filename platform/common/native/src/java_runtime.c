@@ -1,4 +1,5 @@
 #include "wvbridge/java_runtime.h"
+#include "wvbridge/logger.h"
 
 static JavaVM* g_java_vm = NULL;
 
@@ -13,8 +14,16 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
     listener_support_on_load(env);
+    logger_on_load();
 
     return JNI_VERSION_1_6;
+}
+
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
+    (void) vm;
+    (void) reserved;
+    logger_on_unload();
+    g_java_vm = NULL;
 }
 
 JavaVM* java_runtime_get_vm(void) {
