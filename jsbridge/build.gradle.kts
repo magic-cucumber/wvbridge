@@ -24,3 +24,17 @@ library {
 }
 
 publishing(KotlinMultiplatform())
+
+dokka {
+    moduleName.set("wvbridge:jsbridge")
+    pluginsConfiguration {
+        versioning {
+            this.version.set(project.version.toString())
+        }
+    }
+
+    dokkaSourceSets.configureEach {
+        includes.from("Module.md")
+    }
+}
+
