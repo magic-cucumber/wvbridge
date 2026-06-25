@@ -5,6 +5,7 @@ import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.js.internal.JavaScriptBridgePacketHeader
 import top.kagg886.wvbridge.js.internal.JavaScriptBridgePostMessageTemplate
 import top.kagg886.wvbridge.js.internal.javaScriptBridgeEvaluateScriptTemplate
+import top.kagg886.wvbridge.js.internal.javaScriptBridgePostMessageDispatchTemplate
 import top.kagg886.wvbridge.js.protocol.JSPacket
 import top.kagg886.wvbridge.js.protocol.JSValue
 
@@ -36,10 +37,7 @@ public suspend fun JavaScriptBridge.evaluateScriptValue(script: String): JSValue
  * @param handle callback invoked with the decoded packet payload.
  */
 public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, handle: (JSValue) -> Unit): CloseHandle {
-    if (with(evaluateScriptValue("return window.__wvbridge_jsbridge_initialized__")) { this !is JSValue.ScriptObject || this.type != "boolean" || !this.value.toBooleanStrict() }) {
-        registerDocumentStartHook(JavaScriptBridgePostMessageTemplate)
-        evaluateScript(JavaScriptBridgePostMessageTemplate)
-    }
+    ensureJavaScriptBridgePostMessageInstalled()
 
     return registerWebMessageHandler { message ->
         val packet = runCatching {
@@ -53,5 +51,36 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
         }
 
         handle(packet.message)
+    }
+}
+
+
+/**
+ * Dispatches a typed message from native code to JavaScript listeners registered with
+ * `window.wvbridge.addEventListener(type, listener)`.
+ *
+ * On first use this installs the bridge post-message bootstrap script into the document-start hook
+ * list and evaluates it in the current page. [value] is then delivered to listeners for [type] by
+ * calling `window.wvbridge.dispatchEvent(type, value)`.
+ *
+ * Only [JSValue.Undefined], [JSValue.Null], and [JSValue.Serializable] can be sent because the
+ * page-side value must be representable as `undefined`, `null`, or JSON.
+ *
+ * @param type application-level packet type to dispatch.
+ * @param value payload delivered to matching JavaScript listeners.
+ */
+public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
+    require(value is JSValue.Undefined || value is JSValue.Null || value is JSValue.Serializable) {
+        "JavaScriptBridge.postMessage only supports JSValue.Undefined, JSValue.Null, and JSValue.Serializable"
+    }
+
+    ensureJavaScriptBridgePostMessageInstalled()
+    evaluateScript(javaScriptBridgePostMessageDispatchTemplate(type, value))
+}
+
+private suspend fun JavaScriptBridge.ensureJavaScriptBridgePostMessageInstalled() {
+    if (with(evaluateScriptValue("return window.__wvbridge_jsbridge_initialized__")) { this !is JSValue.ScriptObject || this.type != "boolean" || !this.value.toBooleanStrict() }) {
+        registerDocumentStartHook(JavaScriptBridgePostMessageTemplate)
+        evaluateScript(JavaScriptBridgePostMessageTemplate)
     }
 }
