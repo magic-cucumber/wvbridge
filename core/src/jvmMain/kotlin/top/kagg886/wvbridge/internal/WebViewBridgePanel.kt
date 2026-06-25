@@ -14,7 +14,6 @@ import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
 import top.kagg886.wvbridge.internal.listener.NativeBridge
-import top.kagg886.wvbridge.internal.listener.NativeLoggerReceiver
 
 /**
  * WebView 页面加载生命周期说明：
