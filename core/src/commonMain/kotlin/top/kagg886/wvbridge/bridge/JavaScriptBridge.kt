@@ -39,7 +39,7 @@ public interface JavaScriptBridge {
      * | --- | --- |
      * | WebView2 / Windows desktop | `window.chrome.webview.postMessage("hello")` |
      * | WebKitGTK / Linux desktop / Apple | `window.webkit.messageHandlers.wvbridge.postMessage("hello")` |
-     * | AndroidX WebKit | `window.wvbridge.postMessage("hello")` |
+     * | AndroidX WebKit | `window._wvbridge.postMessage("hello")` |
      *
      * Limitations:
      *

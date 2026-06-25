@@ -66,7 +66,7 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
 
             WebViewCompat.addWebMessageListener(
                 instance,
-                "wvbridge",
+                "_wvbridge",
                 setOf("*"),
             ) { _, message, _, _, _ ->
                 val data = message.data ?: ""

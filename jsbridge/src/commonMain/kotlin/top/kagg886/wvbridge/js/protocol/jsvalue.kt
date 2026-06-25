@@ -7,16 +7,16 @@ import top.kagg886.wvbridge.js.internal.base64Encode
 /**
  * The JavaScript evaluation result normalized across native WebView backends.
  */
-public sealed interface Value {
+public sealed interface JSValue {
     /**
      * JavaScript returned `undefined`.
      */
-    public data object Undefined : Value
+    public data object Undefined : JSValue
 
     /**
      * JavaScript returned `null`.
      */
-    public data object Null : Value
+    public data object Null : JSValue
 
     /**
      * A JavaScript object that cannot be faithfully represented by JSON.
@@ -25,24 +25,24 @@ public sealed interface Value {
      * and functions, or `typeof value` for primitive values.
      * [value] is the result of JavaScript `String(value)`, for example `console` or `window`.
      */
-    public data class ScriptObject(val type: String, val value: String) : Value
+    public data class ScriptObject(val type: String, val value: String) : JSValue
 
     /**
      * A JavaScript value serialized with `JSON.stringify`.
      *
      * [value] is the result of JavaScript `JSON.stringify(value)`.
      */
-    public data class Serializable(val value: String) : Value
+    public data class Serializable(val value: String) : JSValue
 
     /**
      * JavaScript evaluation threw an exception.
      *
      * [stacktrace] is the JavaScript stack trace when the runtime exposes one.
      */
-    public data class Error(val stacktrace: String) : Value
+    public data class Error(val stacktrace: String) : JSValue
 
     public companion object {
-        internal fun String?.toJavaScriptBridgeValue(): Value {
+        internal fun String?.toJavaScriptBridgeValue(): JSValue {
             fun parseObject(payload: String): ScriptObject? {
                 val separator = payload.indexOf(':')
                 if (separator < 0) return null
@@ -93,7 +93,7 @@ public sealed interface Value {
             }
         }
 
-        internal fun Value.toJavaScriptBridgeString(): String {
+        internal fun JSValue.toJavaScriptBridgeString(): String {
             fun wrap(tag: Char, payload: String = ""): String = "$JavaScriptBridgeResultPrefix$tag:$payload"
 
             return when (this) {

@@ -1,14 +1,23 @@
 package sample.app
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -21,11 +30,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,13 +45,55 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlinx.datetime.format
+import kotlinx.datetime.format.DateTimeComponents
+import kotlinx.datetime.format.DateTimeFormat
+import kotlinx.datetime.format.DateTimeFormatBuilder
+import top.kagg886.pmf.ui.component.scroll.VerticalScrollbar
+import top.kagg886.pmf.ui.component.scroll.rememberScrollbarAdapter
 import top.kagg886.wvbridge.LoadingState
 import top.kagg886.wvbridge.WebView
 import top.kagg886.wvbridge.WebViewController
 import top.kagg886.wvbridge.WebViewNavigator
 import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.js.evaluateScriptValue
+import top.kagg886.wvbridge.js.registerWebMessageHandler
+import top.kagg886.wvbridge.js.protocol.JSValue
+import top.kagg886.wvbridge.util.LoggerReceiver
+import kotlin.time.Clock
+
+internal fun receiver(handle: (level: LoggerReceiver.Level, message: String) -> Unit): LoggerReceiver =
+    LoggerReceiver { level, tag, message ->
+        val format = DateTimeComponents.Format {
+            year()
+            chars("-")
+            monthNumber()
+            chars("-")
+            day()
+            chars(" ")
+            hour()
+            chars(":")
+            minute()
+            chars(":")
+            second()
+        }
+
+        fun String.truncate(length: Int) = when (this.length) {
+            in 0..length -> this
+            else -> substring(0, length - 3) + "..."
+        }
+
+
+        val time = "${Clock.System.now().format(format)} ${level.toString().padEnd(7)}"
+        val tag = tag.truncate(16).padEnd(16)
+        handle(
+            level, "$time: [$tag] - $message"
+        )
+    }
+
 
 @Composable
 internal fun BrowserScreen(
@@ -51,11 +105,37 @@ internal fun BrowserScreen(
 ) {
     val scope = rememberCoroutineScope()
     var documentStartHook by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
+    var messageBridgeHandle by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
+    var sendMessageCount by remember(webViewController) { mutableStateOf(0) }
+    val logs = remember { mutableStateListOf<String>() }
+
+    fun appendLog(message: String) {
+        logs += message
+        if (logs.size > MaxLogLines) {
+            logs.removeRange(0, logs.size - MaxLogLines)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val rc = receiver { level, line ->
+            println(line)
+            if (level >= LoggerReceiver.Level.INFO)
+            scope.launch {
+                appendLog(line)
+            }
+        }
+        LoggerReceiver.register(rc)
+        onDispose {
+            LoggerReceiver.unregister(rc)
+        }
+    }
 
     DisposableEffect(webViewController) {
         onDispose {
             documentStartHook?.close()
             documentStartHook = null
+            messageBridgeHandle?.close()
+            messageBridgeHandle = null
         }
     }
 
@@ -69,6 +149,12 @@ internal fun BrowserScreen(
     LaunchedEffect(webViewController.url) {
         if (webViewController.url.isNotBlank() && webViewController.url != url) {
             onUrlChange(webViewController.url)
+        }
+    }
+
+    LaunchedEffect(sendMessageCount) {
+        if (sendMessageCount > 0) {
+            onMessage("Send Message", "sendMessageCount changed to $sendMessageCount")
         }
     }
 
@@ -112,12 +198,65 @@ internal fun BrowserScreen(
                     onMessage("Document Start Hook", error.message ?: error.toString())
                 }
             },
+            onRegisterMessageBridge = {
+                scope.launch {
+                    val previousHandle = messageBridgeHandle
+                    val result = runCatching {
+                        webViewController.bridge.registerWebMessageHandler(SampleMessageType) { value ->
+                            scope.launch {
+                                appendLog("JS message [$SampleMessageType]: ${value.formatForDisplay()}")
+                                if (value is JSValue.ScriptObject && value.type == "number") {
+                                    sendMessageCount += 1
+                                }
+                            }
+                        }
+                    }
+                    result.onSuccess { handle ->
+                        previousHandle?.close()
+                        messageBridgeHandle = handle
+                        appendLog("Message bridge registered for type '$SampleMessageType'.")
+                    }.onFailure { error ->
+                        onMessage("Message Bridge", error.message ?: error.toString())
+                    }
+                }
+            },
+            onUnregisterMessageBridge = {
+                runCatching {
+                    messageBridgeHandle?.close()
+                }.onSuccess {
+                    messageBridgeHandle = null
+                    appendLog("Message bridge unregistered.")
+                }.onFailure { error ->
+                    onMessage("Message Bridge", error.message ?: error.toString())
+                }
+            },
+            onSendMessage = {
+                scope.launch {
+                    val result = runCatching {
+                        webViewController.bridge.evaluateScriptValue(
+                            """
+                                window.wvbridge.postMessage("$SampleMessageType", 1);
+                                return true;
+                            """.trimIndent()
+                        )
+                    }
+                    result.onFailure { error ->
+                        onMessage("Send Message", error.message ?: error.toString())
+                    }
+                }
+            },
             navigator = webViewController.navigator,
             isLoading = webViewController.loadingState is LoadingState.Loading,
+            isMessageBridgeRegistered = messageBridgeHandle != null,
         )
         WebView(
             controller = webViewController,
-            modifier = Modifier.fillMaxSize().padding(top = 10.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp),
+        )
+        LogPanel(
+            logs = logs,
+            onClear = { logs.clear() },
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp).weight(0.32f),
         )
     }
 }
@@ -130,8 +269,12 @@ private fun BrowserToolbar(
     onRunJavaScript: () -> Unit,
     onInstallDocumentStartHook: () -> Unit,
     onRemoveDocumentStartHook: () -> Unit,
+    onRegisterMessageBridge: () -> Unit,
+    onUnregisterMessageBridge: () -> Unit,
+    onSendMessage: () -> Unit,
     navigator: WebViewNavigator,
     isLoading: Boolean,
+    isMessageBridgeRegistered: Boolean,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -189,9 +332,81 @@ private fun BrowserToolbar(
                 text("Remove document start hook")
                 onClick(onRemoveDocumentStartHook)
             }
+            item {
+                icon(Icons.Filled.Add)
+                text(if (isMessageBridgeRegistered) "Re-register message bridge" else "Register message bridge")
+                onClick(onRegisterMessageBridge)
+            }
+            item {
+                icon(Icons.Filled.Delete)
+                text("Unregister message bridge")
+                onClick(onUnregisterMessageBridge)
+            }
+            item {
+                icon(Icons.Filled.Code)
+                text("Send message")
+                onClick(onSendMessage)
+            }
         }
     }
 }
+
+@Composable
+private fun LogPanel(
+    logs: List<String>,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberScrollState()
+
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) {
+            listState.scrollTo(listState.maxValue)
+        }
+    }
+
+    Surface(
+        modifier = modifier,
+        tonalElevation = 2.dp,
+        shadowElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Info Logs",
+                    modifier = Modifier.weight(1f),
+                    fontSize = 12.sp,
+                )
+                TextButton(onClick = onClear) {
+                    Text("Clear", fontSize = 12.sp)
+                }
+            }
+            Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+                SelectionContainer {
+                    Column(Modifier.fillMaxSize().verticalScroll(listState)) {
+                        for (log in logs) {
+                            Text(
+                                text = log,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
+                            )
+                        }
+                    }
+                }
+                VerticalScrollbar(
+                    adapter = rememberScrollbarAdapter(listState),
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(8.dp),
+                )
+            }
+        }
+    }
+}
+
+private const val SampleMessageType = "sample"
+private const val MaxLogLines = 200
 
 private val DocumentStartHookScript = """
     const appendHookDiv = () => {
