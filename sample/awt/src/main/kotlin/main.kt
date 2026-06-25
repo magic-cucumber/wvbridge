@@ -1,7 +1,10 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
+import top.kagg886.wvbridge.util.LoggerReceiver
 import java.awt.*
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import javax.swing.*
 
 private class BrowserPane(
@@ -35,9 +38,7 @@ private class BrowserPane(
     private var canGoForward = false
     private var isLoading = false
 
-    private fun debug(event: String, value: Any?) {
-        println("[$title][$event] $value")
-    }
+    private fun debug(event: String, value: Any?) = LoggerReceiver.log(LoggerReceiver.Level.DEBUG,"BrowserPane - $event",value.toString())
 
     private fun createNavButton(text: String): JButton {
         return JButton(text).apply { preferredSize = navButtonSize }
@@ -197,7 +198,15 @@ private class BrowserPane(
     }
 }
 
+internal fun String.truncate(length: Int) = when(this.length) {
+    in 0..length -> this
+    else -> substring(0, length - 3) + "..."
+}
+
 fun main() = SwingUtilities.invokeLater {
+    LoggerReceiver.register { level, tag, message ->
+        println("${LocalDateTime.now().format(DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss"))} ${level.toString().padEnd(7)}: [${tag.truncate(16).padEnd(16)}] - $message")
+    }
     val frame = JFrame("WebView Bridge Panel Demo").apply {
         setSize(1200, 600)
         defaultCloseOperation = JFrame.EXIT_ON_CLOSE

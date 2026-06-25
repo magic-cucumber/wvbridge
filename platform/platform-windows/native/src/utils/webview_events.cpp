@@ -5,6 +5,8 @@
 
 #include <string>
 
+#include <wvbridge/logger.h>
+
 using Microsoft::WRL::ComPtr;
 
 struct WebViewEvents {
@@ -34,8 +36,10 @@ constexpr float kPhaseContentLoading = 0.5f;
 constexpr float kPhaseCompleted = 1.0f;
 
 std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs* args) {
+    LOGGER_V("format_failure_reason");
     COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
     if (!args || FAILED(args->get_WebErrorStatus(&status))) {
+        LOGGER_W("format_failure_reason: null args or FAILED, returning default");
         return L"webview2.navigation.failed";
     }
     return L"webview2.navigation.failed: WebErrorStatus=" +
@@ -43,10 +47,12 @@ std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs* ar
 }
 
 std::wstring format_named_constant(const wchar_t* name, int value) {
+    LOGGER_V("format_named_constant: name=%ls, value=%d", name, value);
     return std::wstring(name) + L"(" + std::to_wstring(value) + L")";
 }
 
 std::wstring format_process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND kind) {
+    LOGGER_V("format_process_failed_kind: kind=%d", static_cast<int>(kind));
     switch (kind) {
         case COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED:
             return format_named_constant(
@@ -102,6 +108,7 @@ std::wstring format_process_failed_kind(COREWEBVIEW2_PROCESS_FAILED_KIND kind) {
 }
 
 std::wstring format_process_failed_reason(COREWEBVIEW2_PROCESS_FAILED_REASON reason) {
+    LOGGER_V("format_process_failed_reason: reason=%d", static_cast<int>(reason));
     switch (reason) {
         case COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED:
             return format_named_constant(
@@ -147,6 +154,7 @@ std::wstring format_process_failed_reason(COREWEBVIEW2_PROCESS_FAILED_REASON rea
 }
 
 std::wstring format_process_failed_message(ICoreWebView2ProcessFailedEventArgs* args) {
+    LOGGER_V("format_process_failed_message");
     COREWEBVIEW2_PROCESS_FAILED_KIND kind =
         COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED;
     if (args) {
@@ -158,6 +166,7 @@ std::wstring format_process_failed_message(ICoreWebView2ProcessFailedEventArgs* 
 
     ComPtr<ICoreWebView2ProcessFailedEventArgs2> args2;
     if (!args || FAILED(args->QueryInterface(IID_PPV_ARGS(&args2))) || !args2) {
+        LOGGER_V("format_process_failed_message: no ICoreWebView2ProcessFailedEventArgs2 available");
         return message;
     }
 
@@ -186,11 +195,16 @@ std::wstring format_process_failed_message(ICoreWebView2ProcessFailedEventArgs* 
 }
 
 bool can_notify(WebViewContext* ctx) {
+    LOGGER_V("can_notify: ctx=%p", ctx);
     return ctx != nullptr && !ctx->closing.load(std::memory_order_acquire);
 }
 
 void notify_history(WebViewContext* ctx) {
-    if (!can_notify(ctx) || !ctx->webview) return;
+    LOGGER_V("notify_history: ctx=%p", ctx);
+    if (!can_notify(ctx) || !ctx->webview) {
+        LOGGER_W("notify_history: cannot notify, aborting");
+        return;
+    }
 
     BOOL can_go_back = FALSE;
     BOOL can_go_forward = FALSE;
@@ -205,7 +219,11 @@ void notify_history(WebViewContext* ctx) {
 } // namespace
 
 WebViewEvents* webview_events_create(WebViewContext* ctx) {
-    if (!ctx || !ctx->webview) return nullptr;
+    LOGGER_I("webview_events_create: ctx=%p", ctx);
+    if (!ctx || !ctx->webview) {
+        LOGGER_W("webview_events_create: null ctx or webview, aborting");
+        return nullptr;
+    }
 
     auto* events = new WebViewEvents();
     events->webview = ctx->webview;
@@ -213,6 +231,7 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
     events->has_source_changed = SUCCEEDED(events->webview->add_SourceChanged(
         Callback<ICoreWebView2SourceChangedEventHandler>(
             [ctx](ICoreWebView2* sender, ICoreWebView2SourceChangedEventArgs*) -> HRESULT {
+                LOGGER_V("webview_events: SourceChanged callback");
                 if (!can_notify(ctx) || !sender) return S_OK;
                 LPWSTR source = nullptr;
                 if (SUCCEEDED(sender->get_Source(&source)) && source) {
@@ -224,10 +243,12 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->source_changed
     ));
+    LOGGER_V("webview_events_create: SourceChanged registered=%d", events->has_source_changed);
 
     events->has_navigation_starting = SUCCEEDED(events->webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
             [ctx](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                LOGGER_V("webview_events: NavigationStarting callback");
                 if (!can_notify(ctx)) return S_OK;
                 LPWSTR uri = nullptr;
                 if (args && SUCCEEDED(args->get_Uri(&uri)) && uri) {
@@ -245,10 +266,12 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->navigation_starting
     ));
+    LOGGER_V("webview_events_create: NavigationStarting registered=%d", events->has_navigation_starting);
 
     events->has_content_loading = SUCCEEDED(events->webview->add_ContentLoading(
         Callback<ICoreWebView2ContentLoadingEventHandler>(
             [ctx](ICoreWebView2*, ICoreWebView2ContentLoadingEventArgs*) -> HRESULT {
+                LOGGER_V("webview_events: ContentLoading callback");
                 if (can_notify(ctx)) {
                     notify_page_loading_progress_to_jvm(
                         reinterpret_cast<jlong>(ctx),
@@ -260,10 +283,12 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->content_loading
     ));
+    LOGGER_V("webview_events_create: ContentLoading registered=%d", events->has_content_loading);
 
     events->has_navigation_completed = SUCCEEDED(events->webview->add_NavigationCompleted(
         Callback<ICoreWebView2NavigationCompletedEventHandler>(
             [ctx](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                LOGGER_V("webview_events: NavigationCompleted callback");
                 if (!can_notify(ctx)) return S_OK;
 
                 BOOL success = FALSE;
@@ -285,23 +310,28 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->navigation_completed
     ));
+    LOGGER_V("webview_events_create: NavigationCompleted registered=%d", events->has_navigation_completed);
 
     events->has_history_changed = SUCCEEDED(events->webview->add_HistoryChanged(
         Callback<ICoreWebView2HistoryChangedEventHandler>(
             [ctx](ICoreWebView2*, IUnknown*) -> HRESULT {
+                LOGGER_V("webview_events: HistoryChanged callback");
                 notify_history(ctx);
                 return S_OK;
             }
         ).Get(),
         &events->history_changed
     ));
+    LOGGER_V("webview_events_create: HistoryChanged registered=%d", events->has_history_changed);
 
     events->has_new_window_requested = SUCCEEDED(events->webview->add_NewWindowRequested(
         Callback<ICoreWebView2NewWindowRequestedEventHandler>(
             [ctx](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
+                LOGGER_V("webview_events: NewWindowRequested callback");
                 if (!ctx || !ctx->webview || !args) return S_OK;
                 LPWSTR uri = nullptr;
                 if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+                    LOGGER_V("webview_events: NewWindowRequested navigating to uri");
                     ctx->webview->Navigate(uri);
                     CoTaskMemFree(uri);
                 }
@@ -311,10 +341,12 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->new_window_requested
     ));
+    LOGGER_V("webview_events_create: NewWindowRequested registered=%d", events->has_new_window_requested);
 
     events->has_process_failed = SUCCEEDED(events->webview->add_ProcessFailed(
         Callback<ICoreWebView2ProcessFailedEventHandler>(
             [ctx](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
+                LOGGER_V("webview_events: ProcessFailed callback");
                 if (!can_notify(ctx)) return S_OK;
 
                 const std::wstring cause = format_process_failed_message(args);
@@ -327,36 +359,50 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
         ).Get(),
         &events->process_failed
     ));
+    LOGGER_V("webview_events_create: ProcessFailed registered=%d", events->has_process_failed);
 
     notify_history(ctx);
+    LOGGER_V("webview_events_create: all events registered, returning events=%p", events);
     return events;
 }
 
 void webview_events_destroy(WebViewEvents* events) {
-    if (!events) return;
+    LOGGER_I("webview_events_destroy: events=%p", events);
+    if (!events) {
+        LOGGER_W("webview_events_destroy: null events, aborting");
+        return;
+    }
 
     if (events->webview) {
         if (events->has_source_changed) {
+            LOGGER_V("webview_events_destroy: removing SourceChanged");
             events->webview->remove_SourceChanged(events->source_changed);
         }
         if (events->has_navigation_starting) {
+            LOGGER_V("webview_events_destroy: removing NavigationStarting");
             events->webview->remove_NavigationStarting(events->navigation_starting);
         }
         if (events->has_content_loading) {
+            LOGGER_V("webview_events_destroy: removing ContentLoading");
             events->webview->remove_ContentLoading(events->content_loading);
         }
         if (events->has_navigation_completed) {
+            LOGGER_V("webview_events_destroy: removing NavigationCompleted");
             events->webview->remove_NavigationCompleted(events->navigation_completed);
         }
         if (events->has_history_changed) {
+            LOGGER_V("webview_events_destroy: removing HistoryChanged");
             events->webview->remove_HistoryChanged(events->history_changed);
         }
         if (events->has_new_window_requested) {
+            LOGGER_V("webview_events_destroy: removing NewWindowRequested");
             events->webview->remove_NewWindowRequested(events->new_window_requested);
         }
         if (events->has_process_failed) {
+            LOGGER_V("webview_events_destroy: removing ProcessFailed");
             events->webview->remove_ProcessFailed(events->process_failed);
         }
     }
     delete events;
+    LOGGER_V("webview_events_destroy: events destroyed");
 }

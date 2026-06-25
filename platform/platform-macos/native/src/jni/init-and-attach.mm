@@ -1,22 +1,35 @@
 #include "libs_helpers.h"
+#include <wvbridge/logger.h>
 
 API_EXPORT(jlong, initAndAttach) {
+    LOGGER_I("initAndAttach: entry");
     // JAWT surface layers
     JAWT awt;
     awt.version = JAWT_VERSION_1_4 | JAWT_MACOSX_USE_CALAYER;
-    if (JAWT_GetAWT(env, &awt) == JNI_FALSE) return 0;
-
-    JAWT_DrawingSurface *ds = awt.GetDrawingSurface(env, thiz);
-    if (!ds) return 0;
-
-    jint lock = ds->Lock(ds);
-    if (lock & JAWT_LOCK_ERROR) {
-        awt.FreeDrawingSurface(ds);
+    LOGGER_V("initAndAttach: requesting JAWT version=0x%x", (unsigned int) awt.version);
+    if (JAWT_GetAWT(env, &awt) == JNI_FALSE) {
+        LOGGER_E("initAndAttach: JAWT_GetAWT failed");
         return 0;
     }
 
+    JAWT_DrawingSurface *ds = awt.GetDrawingSurface(env, thiz);
+    if (!ds) {
+        LOGGER_E("initAndAttach: GetDrawingSurface returned null");
+        return 0;
+    }
+    LOGGER_V("initAndAttach: drawing surface obtained, ds=%p", (void *) ds);
+
+    jint lock = ds->Lock(ds);
+    if (lock & JAWT_LOCK_ERROR) {
+        LOGGER_E("initAndAttach: JAWT lock error, lock=0x%x", (unsigned int) lock);
+        awt.FreeDrawingSurface(ds);
+        return 0;
+    }
+    LOGGER_V("initAndAttach: drawing surface locked successfully");
+
     JAWT_DrawingSurfaceInfo *dsi = ds->GetDrawingSurfaceInfo(ds);
     if (!dsi) {
+        LOGGER_E("initAndAttach: GetDrawingSurfaceInfo returned null");
         ds->Unlock(ds);
         awt.FreeDrawingSurface(ds);
         return 0;
@@ -24,14 +37,19 @@ API_EXPORT(jlong, initAndAttach) {
 
     id <JAWT_SurfaceLayers> surfaceLayers = (__bridge id <JAWT_SurfaceLayers>) dsi->platformInfo;
     if (!surfaceLayers) {
+        LOGGER_E("initAndAttach: surfaceLayers is null");
         ds->FreeDrawingSurfaceInfo(dsi);
         ds->Unlock(ds);
         awt.FreeDrawingSurface(ds);
         return 0;
     }
+    LOGGER_V("initAndAttach: surfaceLayers obtained");
+
     WebViewContext *ctx = new WebViewContext();
     const jlong pointer = (jlong) (uintptr_t) ctx;
+    LOGGER_V("initAndAttach: ctx=%p pointer=%lld", (void *) ctx, (long long) pointer);
 
+    LOGGER_V("initAndAttach: setting up WebView on main thread");
     runOnMainSync(^{
         ctx->rootLayer = [[CALayer alloc] init];
         ctx->windowLayer = [surfaceLayers.windowLayer retain];
@@ -48,12 +66,14 @@ API_EXPORT(jlong, initAndAttach) {
         wv.UIDelegate = [[AllowAllUIDelegate alloc] init];
         ctx->webView = wv;
         ctx->events = [[WebViewEvents alloc] initWithWebView:wv pointer:pointer];
+        LOGGER_V("initAndAttach: WebView created on main thread, wv=%p", (void *) wv);
 
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         surfaceLayers.layer = ctx->rootLayer;
         [CATransaction commit];
         [CATransaction flush];
+        LOGGER_V("initAndAttach: rootLayer bound to surfaceLayers");
 
 
         NSView *hostView = find_view_for_layer(ctx->windowLayer);
@@ -61,11 +81,13 @@ API_EXPORT(jlong, initAndAttach) {
         ctx->hostView = ctx->hostWindow.contentView ?: hostView;
         [ctx->webView removeFromSuperview];
         [ctx->hostView addSubview:ctx->webView positioned:NSWindowAbove relativeTo:nil];
+        LOGGER_V("initAndAttach: webView added to hostView subviews");
     });
 
     ds->FreeDrawingSurfaceInfo(dsi);
     ds->Unlock(ds);
     awt.FreeDrawingSurface(ds);
+    LOGGER_V("initAndAttach: JAWT surface released, returning pointer=%lld", (long long) pointer);
 
     return (jlong) (uintptr_t) ctx;
 }

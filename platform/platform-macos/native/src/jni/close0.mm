@@ -1,15 +1,23 @@
 #include "libs_helpers.h"
+#include <wvbridge/logger.h>
 
 API_EXPORT(void, close0, jlong handle) {
+    LOGGER_I("close0: handle=%lld", (long long) handle);
     if (handle == 0) {
+        LOGGER_W("close0: handle is null, throwing NPE");
         throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
         return;
     }
     auto *ctx = (WebViewContext *) (uintptr_t) handle;
-    if (!ctx) return;
+    LOGGER_V("close0: ctx=%p", (void *) ctx);
+    if (!ctx) {
+        LOGGER_W("close0: ctx is null after cast, aborting");
+        return;
+    }
 
-    // AWT 相关清理（解绑 surfaceLayers.layer）只有在“正确上下文”下才执行。
-    // 这里的“正确上下文”= 组件可用（displayable）且能拿到 SurfaceLayers，并且其 layer 正是 ctx->rootLayer。
+    // AWT 相关清理（解绑 surfaceLayers.layer）只有在"正确上下文"下才执行。
+    // 这里的"正确上下文"= 组件可用（displayable）且能拿到 SurfaceLayers，并且其 layer 正是 ctx->rootLayer。
+    LOGGER_V("close0: entering AWT surface cleanup do-while block");
     do {
         if (!env || !thiz) break;
         if (!ctx->rootLayer) break;
@@ -66,6 +74,7 @@ API_EXPORT(void, close0, jlong handle) {
             break;
         }
 
+        LOGGER_V("close0: unbinding rootLayer from surfaceLayers");
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         [ctx->rootLayer release];
@@ -77,9 +86,11 @@ API_EXPORT(void, close0, jlong handle) {
         ds->Unlock(ds);
         awt.FreeDrawingSurface(ds);
     } while (false);
+    LOGGER_V("close0: AWT surface cleanup done, starting UI cleanup on main thread");
 
     // UI 清理放在主线程。
     runOnMainSync(^{
+        LOGGER_V("close0: executing UI cleanup on main thread, ctx=%p", (void *) ctx);
         if (!ctx) return;
 
         if (ctx->webView) {
@@ -103,6 +114,6 @@ API_EXPORT(void, close0, jlong handle) {
 
     });
 
+    LOGGER_V("close0: UI cleanup done, deleting ctx=%p", (void *) ctx);
     delete ctx;
-
 }

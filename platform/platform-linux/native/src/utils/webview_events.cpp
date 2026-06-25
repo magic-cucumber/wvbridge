@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "wvbridge/native_bridge.h"
+#include <wvbridge/logger.h>
 
 namespace wvbridge {
 
@@ -31,19 +32,26 @@ struct WebViewEvents {
 namespace {
 
 bool is_closing(const WebViewEvents* events) {
+    LOGGER_V("is_closing: checking close state");
     return events != nullptr &&
            events->closing != nullptr &&
            events->closing->load(std::memory_order_acquire);
 }
 
 float clamp01(double value) {
+    LOGGER_V("clamp01: value=%f", value);
     if (value != value || value < 0.0) return 0.0f;
     if (value > 1.0) return 1.0f;
     return static_cast<float>(value);
 }
 
 void notify_history(WebViewEvents* events) {
-    if (!events || !events->webview || is_closing(events)) return;
+    LOGGER_I("notify_history: pointer=%ld", events ? events->pointer : 0);
+    if (!events || !events->webview || is_closing(events)) {
+        LOGGER_W("notify_history: null events/webview or closing, aborting");
+        return;
+    }
+    LOGGER_V("notify_history: notifying can_go_back/forward to JVM");
     notify_can_go_back_change_to_jvm(
         events->pointer,
         webkit_web_view_can_go_back(events->webview) ? JNI_TRUE : JNI_FALSE
@@ -56,30 +64,43 @@ void notify_history(WebViewEvents* events) {
 
 void url_changed_cb(WebKitWebView* webview, GParamSpec*, gpointer user_data) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || !webview || is_closing(events)) return;
+    LOGGER_I("url_changed_cb: webview=%p, events=%p", webview, events);
+    if (!events || !webview || is_closing(events)) {
+        LOGGER_W("url_changed_cb: null webview/events or closing, aborting");
+        return;
+    }
+    LOGGER_V("url_changed_cb: notifying JVM of URL=%s", webkit_web_view_get_uri(webview));
     notify_url_change_to_jvm(events->pointer, webkit_web_view_get_uri(webview));
 }
 
 void load_changed_cb(WebKitWebView* webview, WebKitLoadEvent load_event, gpointer user_data) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || !webview || is_closing(events)) return;
+    LOGGER_I("load_changed_cb: webview=%p, load_event=%d, events=%p", webview, (int)load_event, events);
+    if (!events || !webview || is_closing(events)) {
+        LOGGER_W("load_changed_cb: null webview/events or closing, aborting");
+        return;
+    }
 
     switch (load_event) {
         case WEBKIT_LOAD_STARTED:
+            LOGGER_V("load_changed_cb: WEBKIT_LOAD_STARTED, uri=%s", webkit_web_view_get_uri(webview));
             events->last_load_failed = false;
             events->last_error_reason.clear();
             notify_page_loading_start_to_jvm(events->pointer, webkit_web_view_get_uri(webview));
             notify_page_loading_progress_to_jvm(events->pointer, 0.0f);
             break;
         case WEBKIT_LOAD_COMMITTED:
+            LOGGER_V("load_changed_cb: WEBKIT_LOAD_COMMITTED");
             notify_page_loading_progress_to_jvm(
                 events->pointer,
                 std::max(clamp01(webkit_web_view_get_estimated_load_progress(webview)), 0.1f)
             );
             break;
         case WEBKIT_LOAD_FINISHED: {
+            LOGGER_V("load_changed_cb: WEBKIT_LOAD_FINISHED");
             notify_page_loading_progress_to_jvm(events->pointer, 1.0f);
             const bool success = !events->last_load_failed;
+            LOGGER_V("load_changed_cb: success=%d", success ? 1 : 0);
             notify_page_loading_end_to_jvm(
                 events->pointer,
                 success ? JNI_TRUE : JNI_FALSE,
@@ -88,16 +109,23 @@ void load_changed_cb(WebKitWebView* webview, WebKitLoadEvent load_event, gpointe
             break;
         }
         case WEBKIT_LOAD_REDIRECTED:
+            LOGGER_V("load_changed_cb: WEBKIT_LOAD_REDIRECTED");
             break;
     }
 }
 
 void progress_changed_cb(GObject* object, GParamSpec*, gpointer user_data) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || is_closing(events)) return;
+    LOGGER_I("progress_changed_cb: object=%p, events=%p", object, events);
+    if (!events || is_closing(events)) {
+        LOGGER_W("progress_changed_cb: null events or closing, aborting");
+        return;
+    }
+    float progress = clamp01(webkit_web_view_get_estimated_load_progress(WEBKIT_WEB_VIEW(object)));
+    LOGGER_V("progress_changed_cb: notifying progress=%.2f", progress);
     notify_page_loading_progress_to_jvm(
         events->pointer,
-        clamp01(webkit_web_view_get_estimated_load_progress(WEBKIT_WEB_VIEW(object)))
+        progress
     );
 }
 
@@ -109,11 +137,16 @@ gboolean load_failed_cb(
     gpointer user_data
 ) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || is_closing(events)) return FALSE;
+    LOGGER_I("load_failed_cb: failing_uri=%s, events=%p", failing_uri ? failing_uri : "null", events);
+    if (!events || is_closing(events)) {
+        LOGGER_W("load_failed_cb: null events or closing, aborting");
+        return FALSE;
+    }
 
     events->last_load_failed = true;
     std::string reason = "webkitgtk.load-failed";
     if (error) {
+        LOGGER_V("load_failed_cb: building error from domain/code/message");
         reason += ": domain=";
         const char* domain_name = g_quark_to_string(error->domain);
         reason += domain_name ? domain_name : "unknown";
@@ -127,6 +160,7 @@ gboolean load_failed_cb(
         reason += ", uri=";
         reason += failing_uri;
     }
+    LOGGER_V("load_failed_cb: reason=%s", reason.c_str());
     events->last_error_reason = std::move(reason);
     return FALSE;
 }
@@ -137,7 +171,11 @@ void web_process_terminated_cb(
     gpointer user_data
 ) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || is_closing(events)) return;
+    LOGGER_I("web_process_terminated_cb: reason=%d, events=%p", (int)reason, events);
+    if (!events || is_closing(events)) {
+        LOGGER_W("web_process_terminated_cb: null events or closing, aborting");
+        return;
+    }
 
     const char* cause = nullptr;
     switch (reason) {
@@ -154,6 +192,7 @@ void web_process_terminated_cb(
             cause = "WEBKIT_WEB_PROCESS_TERMINATION_REASON_UNKNOWN";
             break;
     }
+    LOGGER_V("web_process_terminated_cb: cause=%s", cause ? cause : "null");
     notify_webview_fatal_error_to_jvm(events->pointer, cause);
 }
 
@@ -163,7 +202,10 @@ void history_changed_cb(
     GList*,
     gpointer user_data
 ) {
-    notify_history(static_cast<WebViewEvents*>(user_data));
+    auto* events = static_cast<WebViewEvents*>(user_data);
+    LOGGER_I("history_changed_cb: events=%p", events);
+    LOGGER_V("history_changed_cb: delegating to notify_history");
+    notify_history(events);
 }
 
 gboolean decide_policy_cb(
@@ -173,14 +215,20 @@ gboolean decide_policy_cb(
     gpointer user_data
 ) {
     auto* events = static_cast<WebViewEvents*>(user_data);
-    if (!events || !webview || !decision) return FALSE;
+    LOGGER_I("decide_policy_cb: webview=%p, decision=%p, type=%d, events=%p", webview, decision, (int)type, events);
+    if (!events || !webview || !decision) {
+        LOGGER_W("decide_policy_cb: null webview/events/decision, aborting");
+        return FALSE;
+    }
 
     if (is_closing(events)) {
+        LOGGER_V("decide_policy_cb: closing, ignoring decision");
         webkit_policy_decision_ignore(decision);
         return TRUE;
     }
 
     if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
+        LOGGER_V("decide_policy_cb: NEW_WINDOW_ACTION, loading request in same webview");
         auto* navigation_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
         WebKitNavigationAction* action =
             webkit_navigation_policy_decision_get_navigation_action(navigation_decision);
@@ -193,9 +241,11 @@ gboolean decide_policy_cb(
     }
 
     if (type == WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
+        LOGGER_V("decide_policy_cb: NAVIGATION_ACTION, using decision");
         webkit_policy_decision_use(decision);
         return TRUE;
     }
+    LOGGER_V("decide_policy_cb: unhandled decision type=%d, returning FALSE", (int)type);
     return FALSE;
 }
 
@@ -206,7 +256,11 @@ WebViewEvents* webview_events_create(
     jlong pointer,
     const std::atomic_bool* closing
 ) {
-    if (!webview) return nullptr;
+    LOGGER_I("webview_events_create: webview=%p, pointer=%ld", webview, pointer);
+    if (!webview) {
+        LOGGER_W("webview_events_create: null webview, aborting");
+        return nullptr;
+    }
 
     auto* events = new WebViewEvents();
     events->webview = webview;
@@ -214,6 +268,7 @@ WebViewEvents* webview_events_create(
     events->closing = closing;
     events->back_forward_list = webkit_web_view_get_back_forward_list(webview);
 
+    LOGGER_V("webview_events_create: connecting signals");
     events->url_changed =
         g_signal_connect(webview, "notify::uri", G_CALLBACK(url_changed_cb), events);
     events->load_changed =
@@ -228,6 +283,7 @@ WebViewEvents* webview_events_create(
         g_signal_connect(webview, "web-process-terminated", G_CALLBACK(web_process_terminated_cb), events);
 
     if (events->back_forward_list) {
+        LOGGER_V("webview_events_create: connecting back_forward_list changed signal");
         events->history_changed = g_signal_connect(
             events->back_forward_list,
             "changed",
@@ -236,13 +292,19 @@ WebViewEvents* webview_events_create(
         );
         notify_history(events);
     }
+    LOGGER_V("webview_events_create: done, events=%p", events);
     return events;
 }
 
 void webview_events_destroy(WebViewEvents* events) {
-    if (!events) return;
+    LOGGER_I("webview_events_destroy: events=%p", events);
+    if (!events) {
+        LOGGER_W("webview_events_destroy: null events, aborting");
+        return;
+    }
 
     if (events->webview) {
+        LOGGER_V("webview_events_destroy: disconnecting webview signal handlers");
         const gulong handlers[] = {
             events->url_changed,
             events->load_changed,
@@ -256,8 +318,10 @@ void webview_events_destroy(WebViewEvents* events) {
         }
     }
     if (events->back_forward_list && events->history_changed != 0) {
+        LOGGER_V("webview_events_destroy: disconnecting back_forward_list signal handler");
         g_signal_handler_disconnect(events->back_forward_list, events->history_changed);
     }
+    LOGGER_V("webview_events_destroy: deleting events");
     delete events;
 }
 

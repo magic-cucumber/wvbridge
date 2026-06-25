@@ -1,15 +1,23 @@
 #include "libs_helpers.h"
 
+#include <wvbridge/logger.h>
+
 int clamp_dim(jint v) {
+    LOGGER_V("clamp_dim: v=%d", v);
     return (v < 1) ? 1 : static_cast<int>(v);
 }
 
 std::wstring query_process_path() {
+    LOGGER_V("query_process_path");
     std::vector<wchar_t> buffer(MAX_PATH);
     while (true) {
         DWORD len = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (len == 0) return L"";
+        if (len == 0) {
+            LOGGER_W("query_process_path: GetModuleFileNameW returned 0");
+            return L"";
+        }
         if (len < buffer.size() - 1) {
+            LOGGER_V("query_process_path: result length=%lu", len);
             return std::wstring(buffer.data(), len);
         }
         buffer.resize(buffer.size() * 2);
@@ -17,33 +25,57 @@ std::wstring query_process_path() {
 }
 
 std::wstring query_current_directory() {
+    LOGGER_V("query_current_directory");
     DWORD len = GetCurrentDirectoryW(0, nullptr);
-    if (len == 0) return L"";
+    if (len == 0) {
+        LOGGER_W("query_current_directory: GetCurrentDirectoryW returned 0");
+        return L"";
+    }
 
     std::vector<wchar_t> buffer(len);
     DWORD actual = GetCurrentDirectoryW(len, buffer.data());
-    if (actual == 0 || actual >= len) return L"";
+    if (actual == 0 || actual >= len) {
+        LOGGER_W("query_current_directory: GetCurrentDirectoryW failed, actual=%lu, len=%lu", actual, len);
+        return L"";
+    }
+    LOGGER_V("query_current_directory: result length=%lu", actual);
     return std::wstring(buffer.data(), actual);
 }
 
 std::wstring query_env_var(const wchar_t *name) {
-    if (!name || name[0] == L'\0') return L"";
+    LOGGER_V("query_env_var: name=%ls", name ? name : L"(null)");
+    if (!name || name[0] == L'\0') {
+        LOGGER_W("query_env_var: null or empty name, returning empty");
+        return L"";
+    }
 
     DWORD len = GetEnvironmentVariableW(name, nullptr, 0);
-    if (len == 0) return L"";
+    if (len == 0) {
+        LOGGER_V("query_env_var: GetEnvironmentVariableW returned 0, returning empty");
+        return L"";
+    }
 
     std::vector<wchar_t> buffer(len);
     DWORD actual = GetEnvironmentVariableW(name, buffer.data(), len);
-    if (actual == 0 || actual >= len) return L"";
+    if (actual == 0 || actual >= len) {
+        LOGGER_W("query_env_var: GetEnvironmentVariableW failed, actual=%lu, len=%lu", actual, len);
+        return L"";
+    }
+    LOGGER_V("query_env_var: result length=%lu", actual);
     return std::wstring(buffer.data(), actual);
 }
 
 std::wstring query_temp_directory() {
+    LOGGER_V("query_temp_directory");
     std::vector<wchar_t> buffer(MAX_PATH);
     while (true) {
         DWORD len = GetTempPathW(static_cast<DWORD>(buffer.size()), buffer.data());
-        if (len == 0) return L"";
+        if (len == 0) {
+            LOGGER_W("query_temp_directory: GetTempPathW returned 0");
+            return L"";
+        }
         if (len < buffer.size()) {
+            LOGGER_V("query_temp_directory: result length=%lu", len);
             return std::wstring(buffer.data(), len);
         }
         buffer.resize(len + 1);
@@ -51,18 +83,29 @@ std::wstring query_temp_directory() {
 }
 
 std::string wstring_to_utf8(const std::wstring &value) {
-    if (value.empty()) return "";
+    LOGGER_V("wstring_to_utf8: length=%zu", value.size());
+    if (value.empty()) {
+        LOGGER_W("wstring_to_utf8: empty input, returning empty");
+        return "";
+    }
 
     int required = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-    if (required <= 0) return "";
+    if (required <= 0) {
+        LOGGER_W("wstring_to_utf8: WideCharToMultiByte returned %d, returning empty", required);
+        return "";
+    }
 
     std::string out(static_cast<size_t>(required), '\0');
     int converted = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), out.data(), required, nullptr, nullptr);
-    if (converted <= 0) return "";
+    if (converted <= 0) {
+        LOGGER_W("wstring_to_utf8: conversion returned %d, returning empty", converted);
+        return "";
+    }
     return out;
 }
 
 std::string trim_message(std::wstring message) {
+    LOGGER_V("trim_message: length=%zu", message.size());
     while (!message.empty() && (message.back() == L'\r' || message.back() == L'\n' || message.back() == L' ' || message.back() == L'\t')) {
         message.pop_back();
     }
@@ -70,6 +113,7 @@ std::string trim_message(std::wstring message) {
 }
 
 std::string format_hresult_code(HRESULT hr) {
+    LOGGER_V("format_hresult_code: hr=0x%lx", hr);
     std::ostringstream oss;
     oss << "0x"
         << std::uppercase
@@ -81,6 +125,7 @@ std::string format_hresult_code(HRESULT hr) {
 }
 
 const char *known_hresult_name(HRESULT hr) {
+    LOGGER_V("known_hresult_name: hr=0x%lx", hr);
     switch (hr) {
         case S_OK:
             return "S_OK";
@@ -138,6 +183,7 @@ const char *known_hresult_name(HRESULT hr) {
 }
 
 std::string format_hresult(HRESULT hr) {
+    LOGGER_V("format_hresult: hr=0x%lx", hr);
     const char *name = known_hresult_name(hr);
     if (name) {
         return std::string(name) + " (" + format_hresult_code(hr) + ")";
@@ -153,6 +199,7 @@ std::string format_hresult(HRESULT hr) {
 }
 
 std::string format_system_message(HRESULT hr) {
+    LOGGER_V("format_system_message: hr=0x%lx", hr);
     LPWSTR raw = nullptr;
     DWORD message_id = static_cast<DWORD>(hr);
     if (HRESULT_FACILITY(hr) == FACILITY_WIN32) {
@@ -168,7 +215,10 @@ std::string format_system_message(HRESULT hr) {
         0,
         nullptr
     );
-    if (len == 0 || !raw) return "";
+    if (len == 0 || !raw) {
+        LOGGER_V("format_system_message: FormatMessageW returned 0 or null, returning empty");
+        return "";
+    }
 
     std::wstring message(raw, len);
     LocalFree(raw);
@@ -176,6 +226,7 @@ std::string format_system_message(HRESULT hr) {
 }
 
 uint64_t stable_hash(const std::wstring &value) {
+    LOGGER_V("stable_hash: length=%zu", value.size());
     uint64_t hash = 1469598103934665603ull;
     for (wchar_t ch: value) {
         hash ^= static_cast<uint64_t>(ch);
@@ -185,11 +236,16 @@ uint64_t stable_hash(const std::wstring &value) {
 }
 
 std::wstring build_user_data_folder() {
+    LOGGER_V("build_user_data_folder");
     std::wstring root = query_env_var(L"LOCALAPPDATA");
     if (root.empty()) {
+        LOGGER_V("build_user_data_folder: LOCALAPPDATA empty, falling back to temp");
         root = query_temp_directory();
     }
-    if (root.empty()) return L"";
+    if (root.empty()) {
+        LOGGER_W("build_user_data_folder: no writable root found, returning empty");
+        return L"";
+    }
 
     const std::wstring process_path = query_process_path();
     std::filesystem::path process_fs = process_path.empty() ? std::filesystem::path(L"java.exe") : std::filesystem::path(process_path);
@@ -205,7 +261,9 @@ std::wstring build_user_data_folder() {
 }
 
 HRESULT ensure_directory_exists(const std::wstring &path, std::string *detail) {
+    LOGGER_V("ensure_directory_exists: path=%ls", path.empty() ? L"(empty)" : path.c_str());
     if (path.empty()) {
+        LOGGER_W("ensure_directory_exists: empty path");
         if (detail) *detail = "No writable base directory was found for WebView2 userDataFolder";
         return E_FAIL;
     }
@@ -213,6 +271,7 @@ HRESULT ensure_directory_exists(const std::wstring &path, std::string *detail) {
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path), ec);
     if (ec) {
+        LOGGER_W("ensure_directory_exists: create_directories failed, ec=%d msg=%s", ec.value(), ec.message().c_str());
         if (detail) {
             std::ostringstream oss;
             oss << "create_directories failed: " << ec.message() << " (" << ec.value() << ")";
@@ -220,10 +279,12 @@ HRESULT ensure_directory_exists(const std::wstring &path, std::string *detail) {
         }
         return HRESULT_FROM_WIN32(ec.value());
     }
+    LOGGER_V("ensure_directory_exists: succeeded");
     return S_OK;
 }
 
 std::string query_runtime_version(const std::wstring &browser_executable_folder) {
+    LOGGER_V("query_runtime_version: folder=%ls", browser_executable_folder.empty() ? L"(empty)" : browser_executable_folder.c_str());
     LPWSTR version = nullptr;
     HRESULT hr = GetAvailableCoreWebView2BrowserVersionString(
         browser_executable_folder.empty() ? nullptr : browser_executable_folder.c_str(),
@@ -233,6 +294,7 @@ std::string query_runtime_version(const std::wstring &browser_executable_folder)
     if (SUCCEEDED(hr) && version) {
         std::string value = wstring_to_utf8(version);
         CoTaskMemFree(version);
+        LOGGER_V("query_runtime_version: version=%s", value.c_str());
         return value.empty() ? "<empty>" : value;
     }
 
@@ -250,10 +312,12 @@ std::string query_runtime_version(const std::wstring &browser_executable_folder)
         }
         oss << ")";
     }
+    LOGGER_W("query_runtime_version: unavailable, hr=0x%lx", hr);
     return oss.str();
 }
 
 std::string hint_for_hresult(HRESULT hr) {
+    LOGGER_V("hint_for_hresult: hr=0x%lx", hr);
     if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
         return "No compatible WebView2 Runtime was found. Install Evergreen WebView2 Runtime or provide browserExecutableFolder.";
     }
@@ -273,6 +337,7 @@ std::string build_init_error(
     const std::wstring &user_data_folder,
     const std::string &extra
 ) {
+    LOGGER_I("build_init_error: stage=%s, hr=0x%lx", stage ? stage : "(null)", hr);
     const std::wstring process_path = query_process_path();
     const std::wstring default_udf = process_path.empty() ? L"" : (process_path + L".WebView2");
 
@@ -304,11 +369,17 @@ std::string build_init_error(
 }
 
 void destroy_ctx(WebViewContext *ctx) {
-    if (!ctx) return;
+    LOGGER_I("destroy_ctx: ctx=%p", ctx);
+    if (!ctx) {
+        LOGGER_W("destroy_ctx: null ctx, aborting");
+        return;
+    }
 
     ctx->closing.store(true, std::memory_order_release);
+    LOGGER_V("destroy_ctx: closing flag set");
 
     if (ctx->thread) {
+        LOGGER_V("destroy_ctx: running sync cleanup on webview2 thread");
         webview2_thread_run_sync(ctx->thread, [ctx] {
             webview_events_destroy(ctx->events);
             ctx->events = nullptr;
@@ -328,16 +399,23 @@ void destroy_ctx(WebViewContext *ctx) {
     }
 
     if (ctx->thread) {
+        LOGGER_V("destroy_ctx: destroying webview2 thread");
         webview2_thread_destroy(ctx->thread);
         ctx->thread = nullptr;
     }
 
     delete ctx;
+    LOGGER_V("destroy_ctx: ctx deleted");
 }
 
 void complete_once(const std::shared_ptr<InitState> &state, HRESULT hr, std::string error) {
+    LOGGER_V("complete_once: hr=0x%lx, error=%s", hr, error.c_str());
     bool expected = false;
-    if (!state->done.compare_exchange_strong(expected, true)) return;
+    if (!state->done.compare_exchange_strong(expected, true)) {
+        LOGGER_V("complete_once: already completed, ignoring");
+        return;
+    }
     state->error = std::move(error);
     state->promise.set_value(hr);
+    LOGGER_V("complete_once: promise set with hr=0x%lx", hr);
 }

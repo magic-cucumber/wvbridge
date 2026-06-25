@@ -24,5 +24,9 @@ public fun interface LoggerReceiver {
         public fun unregister(receiver: LoggerReceiver): Unit = check(receivers.remove(receiver)) {
             "receiver not unregistered"
         }
+
+        public fun log(level: Level, tag: String, message: String): Unit = receivers.forEach {
+            it.onLoggerReceived(level, tag, message)
+        }
     }
 }

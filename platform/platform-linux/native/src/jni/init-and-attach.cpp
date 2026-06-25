@@ -1,35 +1,38 @@
 #include "libs_helpers.h"
+#include <wvbridge/logger.h>
 
 API_EXPORT(jlong, initAndAttach) {
-    // 确保 GTK 主线程/主循环已初始化（只初始化一次）。
+    LOGGER_I("initAndAttach: entry");
+
     if (!wvbridge::gtk_is_inited()) {
+        LOGGER_V("initAndAttach: GTK not initialized, calling gtk_init");
         wvbridge::gtk_init();
     }
 
     ::Window parent_xid = 0;
 
-    // JAWT surface layers
+    LOGGER_V("initAndAttach: acquiring JAWT");
     JAWT awt;
     awt.version = JAWT_VERSION_1_4;
     if (JAWT_GetAWT(env, &awt) == JNI_FALSE) {
+        LOGGER_E("initAndAttach: JAWT_GetAWT failed");
         throw_jni_exception(env, "java/lang/RuntimeException", "JAWT_GetAWT failed");
         return 0;
     }
 
     JAWT_DrawingSurface *ds = awt.GetDrawingSurface(env, thiz);
     if (!ds) {
+        LOGGER_E("initAndAttach: GetDrawingSurface failed");
         throw_jni_exception(env, "java/lang/RuntimeException", "GetDrawingSurface failed");
         return 0;
     }
+    LOGGER_V("initAndAttach: DrawingSurface acquired ds=%p", (void*)ds);
 
-    // 下面的清理逻辑必须与实际获取顺序严格对称：
-    // Lock -> GetDrawingSurfaceInfo -> FreeDrawingSurfaceInfo -> Unlock -> FreeDrawingSurface
     bool ds_locked = false;
     JAWT_DrawingSurfaceInfo *dsi = nullptr;
 
     auto free_dsi = [&] {
         if (dsi) {
-            // JAWT 1.4: FreeDrawingSurfaceInfo 只接收 dsi 参数
             ds->FreeDrawingSurfaceInfo(dsi);
             dsi = nullptr;
         }
@@ -49,64 +52,76 @@ API_EXPORT(jlong, initAndAttach) {
         }
     };
 
+    LOGGER_V("initAndAttach: locking DrawingSurface");
     const jint lock = ds->Lock(ds);
     if (lock & JAWT_LOCK_ERROR) {
+        LOGGER_E("initAndAttach: DrawingSurface lock failed, lock=%d", lock);
         free_ds();
         throw_jni_exception(env, "java/lang/RuntimeException", "DrawingSurface lock failed");
         return 0;
     }
     ds_locked = true;
 
+    LOGGER_V("initAndAttach: getting DrawingSurfaceInfo");
     dsi = ds->GetDrawingSurfaceInfo(ds);
     if (!dsi) {
+        LOGGER_E("initAndAttach: GetDrawingSurfaceInfo returned null");
         unlock_ds();
         free_ds();
         throw_jni_exception(env, "java/lang/RuntimeException", "GetDrawingSurfaceInfo failed");
         return 0;
     }
 
-    // 读取 X11 宿主窗口句柄
+    LOGGER_V("initAndAttach: reading X11 platform info");
     auto *xinfo = static_cast<JAWT_X11DrawingSurfaceInfo *>(dsi->platformInfo);
     if (xinfo) {
         parent_xid = (::Window) xinfo->drawable;
+        LOGGER_V("initAndAttach: parent_xid=%lu", (unsigned long)parent_xid);
     }
 
     free_dsi();
     unlock_ds();
     free_ds();
+    LOGGER_V("initAndAttach: DrawingSurface released");
 
     if (parent_xid == 0) {
+        LOGGER_E("initAndAttach: parent_xid is 0, AWT drawable is null");
         throw_jni_exception(env, "java/lang/RuntimeException", "AWT drawable is null (not an X11 Window?)");
         return 0;
     }
 
-    // 2) 在 GTK 线程同步创建 WebView，并 reparent 到 AWT 宿主窗口
+    LOGGER_V("initAndAttach: creating WebViewContext");
     auto *ctx = new WebViewContext();
     ctx->parent_xid = parent_xid;
     const jlong pointer = reinterpret_cast<jlong>(ctx);
 
     bool ok = true;
 
+    LOGGER_V("initAndAttach: running GTK thread creation");
     wvbridge::gtk_run_on_thread_sync([&] {
-        // 仅支持 X11：需要拿到 XDisplay + XID。
+        LOGGER_V("initAndAttach: GTK thread - acquiring XDisplay");
         ctx->xdisplay = get_xdisplay_from_gdk_default();
         if (!ctx->xdisplay) {
+            LOGGER_W("initAndAttach: GTK thread - get_xdisplay_from_gdk_default returned null");
             ok = false;
             return;
         }
 
-        // 初始大小：取 AWT 宿主窗口当前几何信息（后续 update 也会以 parent 的真实几何为准）。
+        LOGGER_V("initAndAttach: GTK thread - querying parent geometry");
         unsigned int pw = 1, ph = 1;
         {
             ::Window root = 0;
             int rx = 0, ry = 0;
             unsigned int bw = 0, depth = 0;
             if (XGetGeometry(ctx->xdisplay, ctx->parent_xid, &root, &rx, &ry, &pw, &ph, &bw, &depth) == 0) {
+                LOGGER_V("initAndAttach: GTK thread - XGetGeometry failed, using default 1x1");
                 pw = 1;
                 ph = 1;
             }
         }
+        LOGGER_V("initAndAttach: GTK thread - parent geometry pw=%u ph=%u", pw, ph);
 
+        LOGGER_V("initAndAttach: GTK thread - creating GTK window");
         ctx->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_decorated(GTK_WINDOW(ctx->window), FALSE);
         gtk_window_set_resizable(GTK_WINDOW(ctx->window), TRUE);
@@ -115,6 +130,7 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_set_can_focus(GTK_WIDGET(ctx->window), TRUE);
         gtk_widget_add_events(GTK_WIDGET(ctx->window), GDK_BUTTON_PRESS_MASK);
 
+        LOGGER_V("initAndAttach: GTK thread - creating WebKit WebView");
         ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
         gtk_widget_set_can_focus(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_hexpand(GTK_WIDGET(ctx->webview), TRUE);
@@ -123,6 +139,7 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_set_valign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_add_events(GTK_WIDGET(ctx->webview), GDK_BUTTON_PRESS_MASK);
 
+        LOGGER_V("initAndAttach: GTK thread - connecting signals");
         ctx->window_button_press_handler_id = g_signal_connect(
             ctx->window,
             "button-press-event",
@@ -137,22 +154,22 @@ API_EXPORT(jlong, initAndAttach) {
         );
 
         ctx->events = wvbridge::webview_events_create(ctx->webview, pointer, &ctx->closing);
-        // 注意：不要用 gtk_widget_set_size_request() 强行指定 WebView 尺寸。
-        // size_request 使用“逻辑像素”，在 HiDPI(scale factor>1) 下会导致实际渲染尺寸被放大，
-        // 从而出现 WebView 比 AWT 宿主窗口更大、被裁剪且无法滚动的问题。
+        LOGGER_V("initAndAttach: GTK thread - webview events created");
 
         gtk_container_add(GTK_CONTAINER(ctx->window), GTK_WIDGET(ctx->webview));
+        LOGGER_V("initAndAttach: GTK thread - realizing window");
         gtk_widget_realize(ctx->window);
 
         ctx->child_xid = get_xid_from_gtk_window(ctx->window);
         if (ctx->child_xid == 0) {
+            LOGGER_W("initAndAttach: GTK thread - get_xid_from_gtk_window returned 0");
             ok = false;
             return;
         }
+        LOGGER_V("initAndAttach: GTK thread - child_xid=%lu", (unsigned long)ctx->child_xid);
 
-        // 将 GTK 窗口 reparent 到 AWT drawable 内部，形成“嵌入式”渲染
+        LOGGER_V("initAndAttach: GTK thread - reparenting to AWT drawable");
         x11_ignore_errors([&] {
-            // 设置 EWMH 属性：让这个用于嵌入的窗口不出现在 GNOME 概览/任务栏中。
             x11_set_ewmh_embed_hints(ctx->xdisplay, ctx->child_xid);
 
             XReparentWindow(ctx->xdisplay, ctx->child_xid, ctx->parent_xid, 0, 0);
@@ -161,15 +178,18 @@ API_EXPORT(jlong, initAndAttach) {
             XMapRaised(ctx->xdisplay, ctx->child_xid);
             XFlush(ctx->xdisplay);
         });
+        LOGGER_V("initAndAttach: GTK thread - reparent complete");
     });
 
     if (!ok) {
+        LOGGER_E("initAndAttach: GTK creation failed, destroying ctx");
         wvbridge::gtk_run_on_thread_sync([&] { destroy_ctx_on_gtk_thread(ctx); });
         delete ctx;
         throw_jni_exception(env, "java/lang/RuntimeException", "Init WebView/attach to AWT failed (X11 only)");
         return 0;
     }
 
-    // 2) 返回给 JVM 作为 handle
-    return reinterpret_cast<jlong>(ctx);
+    const jlong handle = reinterpret_cast<jlong>(ctx);
+    LOGGER_I("initAndAttach: success, returning handle=%lld", (long long)handle);
+    return handle;
 }

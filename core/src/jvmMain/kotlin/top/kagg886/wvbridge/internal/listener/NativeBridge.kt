@@ -1,6 +1,7 @@
 package top.kagg886.wvbridge.internal.listener
 
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
+import top.kagg886.wvbridge.util.LoggerReceiver
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.SwingUtilities
 
@@ -60,7 +61,7 @@ internal object NativeBridge {
     }
 
     @JvmStatic
-    private fun onNativeLoggerPostedCallback(level: String, tag: String, message: String) {
-
-    }
+    private fun onNativeLoggerPostedCallback(level: String, tag: String, message: String): Unit = LoggerReceiver.log(
+        LoggerReceiver.Level.valueOf(level), tag, message
+    )
 }
