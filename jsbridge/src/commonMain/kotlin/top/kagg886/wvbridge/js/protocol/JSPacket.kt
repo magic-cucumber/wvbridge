@@ -4,7 +4,7 @@ import top.kagg886.wvbridge.js.internal.JavaScriptBridgePacketPrefix
 import top.kagg886.wvbridge.js.internal.base64Decode
 import top.kagg886.wvbridge.js.internal.base64Encode
 
-public data class JSPacket(
+internal data class JSPacket(
     val header: String,
     val type: String,
     val message: JSValue,

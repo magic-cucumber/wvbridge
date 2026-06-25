@@ -119,5 +119,6 @@ Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitation
 | Loading state listener                                | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Synchronous JS execution                              | ✅                   | ✅   | ✅           | 🚧        | ✅         |
 | Add page script (document-start hook)                 | ✅                   | ✅   | ✅           | 🚧        | ✅         |
+| Listen for events sent from native                    | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Auto destroy on error                                 | 🚧                  | 🚧  | 🚧          | ✅         | 🚧        |
 | Off-screen rendering                                  | ✅ System capability | 🧪  | ❌           | ❌         | ❌         |

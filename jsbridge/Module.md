@@ -103,5 +103,5 @@ Legend: ✅ Supported; 🚧 Under construction; 🧪 Untested.
 
 | Feature                          | Android | iOS | Windows JVM | Linux JVM | macOS JVM |
 |----------------------------------|---------|-----|-------------|-----------|-----------|
-| Typed JavaScript code evaluation | ✅       | ✅  | ✅           | 🧪        | ✅         |
-| `postMessage` / listener API     | 🚧      | 🚧  | 🚧          | 🚧        | 🚧        |
+| Typed JavaScript code evaluation | ✅       | ✅   | ✅           | 🧪        | ✅         |
+| `postMessage`                    | ✅       | ✅   | ✅           | ✅         | ✅         |
