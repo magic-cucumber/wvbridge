@@ -100,7 +100,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     internal val pageLoadingEndListener = CopyOnWriteArraySet<BiConsumer<Boolean, String?>>()
     internal val canGoBackChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
     internal val canGoForwardChangeListener = CopyOnWriteArraySet<Consumer<Boolean>>()
-    internal val loggerReceiver = CopyOnWriteArraySet<NativeLoggerReceiver>()
 
     internal val closeListener = CopyOnWriteArraySet<Consumer<String?>>()
 
@@ -175,17 +174,6 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         check(closeListener.remove(handle)) {
             "webview close listener: [$handle] not yet exists"
         }
-
-    public fun addNativeLogger(handle: NativeLoggerReceiver): Unit =
-        check(loggerReceiver.add(handle)) {
-            "native logger: [$handle] already added"
-        }
-
-    public fun removeNativeLogger(handle: NativeLoggerReceiver): Unit =
-        check(loggerReceiver.remove(handle)) {
-            "native logger: [$handle] not yet exists"
-        }
-
     override fun removeNotify() {
         super.removeNotify()
         close()

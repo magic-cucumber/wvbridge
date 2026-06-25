@@ -18,7 +18,6 @@
 namespace {
 
 struct LoggerMessage {
-    jlong pointer;
     std::string level;
     std::string tag;
     std::string message;
@@ -138,7 +137,7 @@ void post_logger_to_jvm(JNIEnv* env, const LoggerMessage& message) {
         env,
         g_logger_callback,
         "onNativeLoggerPostedCallback",
-        "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
         &callback_class
     );
     if (method == nullptr || callback_class == nullptr) return;
@@ -147,7 +146,7 @@ void post_logger_to_jvm(JNIEnv* env, const LoggerMessage& message) {
     jstring tag = new_jvm_utf8_string(env, message.tag);
     jstring text = new_jvm_utf8_string(env, message.message);
     if (level != nullptr && tag != nullptr && text != nullptr) {
-        env->CallStaticVoidMethod(callback_class, method, message.pointer, level, tag, text);
+        env->CallStaticVoidMethod(callback_class, method, level, tag, text);
         clear_jni_exception(env);
     }
 
@@ -215,7 +214,6 @@ void logger_loop() {
 } // namespace
 
 extern "C" void notify_jvm_logger(
-    jlong pointer,
     const char* level,
     const char* tag,
     const char* format,
@@ -232,7 +230,6 @@ extern "C" void notify_jvm_logger(
             return;
         }
         g_logger_queue.push_back(LoggerMessage {
-            pointer,
             level != nullptr ? level : "",
             tag != nullptr ? tag : "",
             std::move(message)

@@ -60,7 +60,7 @@ internal object NativeBridge {
     }
 
     @JvmStatic
-    private fun onNativeLoggerPostedCallback(webview: Long, level: String, tag: String, message: String) {
-        findPanel(webview)?.loggerReceiver?.forEach { it.onLoggerReceived(NativeLoggerReceiver.Level.valueOf(level), tag, message) }
+    private fun onNativeLoggerPostedCallback(level: String, tag: String, message: String) {
+
     }
 }
