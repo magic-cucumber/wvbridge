@@ -1,5 +1,6 @@
 package sample.app
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,7 +122,7 @@ internal fun BrowserScreen(
             println(line)
             if (level >= LoggerReceiver.Level.INFO)
             scope.launch {
-                appendLog(line)
+                appendLog(line.takeWhile { it != '\n' })
             }
         }
         LoggerReceiver.register(rc)
@@ -386,7 +387,7 @@ private fun LogPanel(
             }
             Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                 SelectionContainer {
-                    Column(Modifier.fillMaxSize().verticalScroll(listState)) {
+                    Column(Modifier.fillMaxSize().verticalScroll(listState).horizontalScroll(rememberScrollState())) {
                         for (log in logs) {
                             Text(
                                 text = log,

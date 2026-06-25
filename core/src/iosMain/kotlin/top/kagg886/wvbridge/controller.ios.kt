@@ -5,13 +5,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
-import platform.Foundation.NSObject
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKUserScript
 import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
+import platform.darwin.NSObject
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
@@ -151,6 +151,7 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
 private class WKWebMessageDispatcher(
     private val handlers: Set<WebMessageConsumer>,
 ) : NSObject(), WKScriptMessageHandlerProtocol {
+    private val TAG = "WKMsgDispatcher"
     override fun userContentController(
         userContentController: WKUserContentController,
         didReceiveScriptMessage: WKScriptMessage,
@@ -159,10 +160,6 @@ private class WKWebMessageDispatcher(
         val message = body as? String ?: body.toString()
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "userContentController: received message=$message")
         handlers.forEach { it.consume(message) }
-    }
-
-    private companion object {
-        private const val TAG = "WKMsgDispatcher"
     }
 }
 
