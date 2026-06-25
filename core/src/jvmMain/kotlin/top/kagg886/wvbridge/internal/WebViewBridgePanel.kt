@@ -176,8 +176,8 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
             "webview close listener: [$handle] not yet exists"
         }
     override fun removeNotify() {
-        super.removeNotify()
         close()
+        super.removeNotify()
     }
 
     override fun addNotify() {

@@ -34,9 +34,11 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
 
     DisposableEffect(Unit) {
         val listener: Consumer<String?> = {
-            SwingUtilities.invokeLater {
-                if (controller.instance.isDisplayable && controller.instance.isShowing) {
-                    controller.instance.addNotify()
+            if (it != null) {
+                SwingUtilities.invokeLater {
+                    if (controller.instance.isDisplayable && controller.instance.isShowing) {
+                        controller.instance.addNotify()
+                    }
                 }
             }
         }
