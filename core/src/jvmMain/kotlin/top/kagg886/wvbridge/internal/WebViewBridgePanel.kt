@@ -13,7 +13,9 @@ import java.util.function.BiConsumer
 import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
+import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.internal.listener.NativeBridge
+import top.kagg886.wvbridge.util.LoggerReceiver
 
 /**
  * WebView 页面加载生命周期说明：
@@ -183,10 +185,14 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
 
         SwingUtilities.invokeLater {
             handle = initAndAttach()
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: initAndAttach handle=$handle")
             NativeBridge.register(this)
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: native bridge registered")
             initialize()
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: initialize callback invoked")
             SwingUtilities.invokeLater {
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
+                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: update w=$width h=$height x=${locationOnScreen.x} y=${locationOnScreen.y}")
                 if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
                     requestFocus0(handle)
                 }
@@ -196,24 +202,72 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         }
     }
 
-    public fun loadUrl(url: String): Unit = loadUrl(handle, url)
-    public fun refresh(): Unit = refresh(handle)
-    public fun stop(): Unit = stop(handle)
-    public fun goBack(): Boolean = goBack(handle)
-    public fun goForward(): Boolean = goForward(handle)
-    public fun evaluateScript(script: String): String? = evaluateScript(handle, script)
-    public fun registerDocumentStartHook(script: String): Long = registerDocumentStartHook(handle, script)
-    public fun unregisterDocumentStartHook(hookId: Long): Unit = unregisterDocumentStartHook(handle, hookId)
+    public fun loadUrl(url: String): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "loadUrl: url=$url")
+        loadUrl(handle, url)
+    }
+    public fun refresh(): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "refresh")
+        refresh(handle)
+    }
+    public fun stop(): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "stop")
+        stop(handle)
+    }
+    public fun goBack(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goBack")
+        val result = goBack(handle)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goBack: result=$result")
+        return result
+    }
+    public fun goForward(): Boolean {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goForward")
+        val result = goForward(handle)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goForward: result=$result")
+        return result
+    }
+    public fun evaluateScript(script: String): String? {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "evaluateScript: script=$script")
+        val result = evaluateScript(handle, script)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: result=$result")
+        return result
+    }
+    public fun registerDocumentStartHook(script: String): Long {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook: script=$script")
+        val hookId = registerDocumentStartHook(handle, script)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: hookId=$hookId")
+        return hookId
+    }
+    public fun unregisterDocumentStartHook(hookId: Long): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "unregisterDocumentStartHook: hookId=$hookId")
+        unregisterDocumentStartHook(handle, hookId)
+    }
+    public fun registerWebMessageHandler(callback: WebMessageConsumer): Long {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler: handler=$callback")
+        val handlerId = registerWebMessageHandler(handle, callback)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler: handlerId=$handlerId")
+        return handlerId
+    }
+    public fun unregisterWebMessageHandler(handlerId: Long): Unit {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "unregisterWebMessageHandler: handlerId=$handlerId")
+        unregisterWebMessageHandler(handle, handlerId)
+    }
 
     private val closeLock = ReentrantLock()
     override fun close(): Unit = close(null)
 
     internal fun close(cause: String?) = closeLock.withLock {
         val handle = handle
-        if (handle == 0L) return@withLock
+        if (handle == 0L) {
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: already closed, handle=0")
+            return@withLock
+        }
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "close: handle=$handle cause=$cause")
         NativeBridge.unregister(this)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: native bridge unregistered")
         this.handle = 0L
         close0(handle)
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: close0 invoked, notifying listeners")
         closeListener.forEach { it.accept(cause) }
     }
 
@@ -232,10 +286,13 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     private external fun evaluateScript(webview: Long, script: String): String?
     private external fun registerDocumentStartHook(webview: Long, script: String): Long
     private external fun unregisterDocumentStartHook(webview: Long, hookId: Long)
+    private external fun registerWebMessageHandler(webview: Long, callback: WebMessageConsumer): Long
+    private external fun unregisterWebMessageHandler(webview: Long, handlerId: Long)
 
 
     @Suppress("UnsafeDynamicallyLoadedCode")
     internal companion object {
+        private const val TAG = "WVBridgePanel"
         init {
             val name = when (jvmTarget) {
                 JvmTarget.MACOS, JvmTarget.LINUX -> "libwvbridge"

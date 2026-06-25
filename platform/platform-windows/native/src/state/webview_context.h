@@ -8,8 +8,10 @@
 
 #include <atomic>
 #include <map>
+#include <mutex>
 #include <string>
 
+#include <wvbridge/javascript.h>
 #include "thread.h"
 
 struct WebViewEvents;
@@ -25,6 +27,11 @@ struct WebViewContext {
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
     WebViewEvents* events = nullptr;
+    EventRegistrationToken web_message_received_token{};
+    bool web_message_received_registered = false;
     long long next_document_start_hook_id = 1;
     std::map<long long, std::wstring> document_start_hook_ids;
+    long long next_web_message_handler_id = 1;
+    std::mutex web_message_handlers_mutex;
+    wvbridge::WebMessageHandlers web_message_handlers;
 };

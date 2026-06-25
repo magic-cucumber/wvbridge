@@ -15,11 +15,12 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlin.coroutines.startCoroutine
-import kotlin.coroutines.suspendCoroutine
+import kotlin.coroutines.resumeWithException
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.util.LoggerReceiver
+import java.util.concurrent.CopyOnWriteArraySet
 
 private const val REMEMBER_TAG = "RememberWebViewController"
 
@@ -34,24 +35,16 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
 }
 
 internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
-    internal val _bridge by lazy {
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "_bridge: lazy init")
-        AndroidJavaScriptBridge(delegate.instance)
-    }
     internal val _navigator by lazy {
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "_navigator: lazy init")
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: lazy init")
         AndroidWebViewNavigator(delegate.instance)
     }
-    override val navigator: WebViewNavigator
-        get() {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: getter")
-            return _navigator
-        }
-    override val bridge: JavaScriptBridge
-        get() {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: getter")
-            return _bridge
-        }
+    internal val _bridge by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: lazy init")
+        AndroidJavaScriptBridge(delegate.instance)
+    }
+    override val navigator: WebViewNavigator get() = _navigator
+    override val bridge: JavaScriptBridge get() = _bridge
 
     internal companion object {
         private const val TAG = "AndroidWebViewController"
@@ -60,15 +53,42 @@ internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebView
 
 internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScriptBridge {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val webMessageHandlers = CopyOnWriteArraySet<WebMessageConsumer>()
+
+    private val supportWebMessageListener = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+
+    init {
+        onMainThread {
+            if (!supportWebMessageListener) {
+                LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "init: WEB_MESSAGE_LISTENER not supported")
+                return@onMainThread
+            }
+
+            WebViewCompat.addWebMessageListener(
+                instance,
+                "wvbridge",
+                setOf("*"),
+            ) { _, message, _, _, _ ->
+                val data = message.data ?: ""
+                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "init: received message=$data")
+                webMessageHandlers.forEach { it.consume(data) }
+            }
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "init: native object registered")
+        }
+    }
 
     override suspend fun evaluateScript(script: String): String? {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "evaluateScript: script=$script")
-        return onMainThread {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: on main thread, evaluating")
-            suspendCancellableCoroutine { continuation ->
-                instance.evaluateJavascript(script) { result ->
-                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: result=$result")
-                    continuation.resume(result)
+        return suspendCancellableCoroutine { continuation ->
+            onMainThread {
+                runCatching {
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: on main thread, evaluating")
+                    instance.evaluateJavascript(script) { result ->
+                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: result=$result")
+                        continuation.resume(result)
+                    }
+                }.onFailure {
+                    continuation.resumeWithException(it)
                 }
             }
         }
@@ -76,57 +96,90 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
 
     override suspend fun registerDocumentStartHook(script: String): CloseHandle {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook: script=$script")
-        return onMainThread {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: on main thread")
-            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerDocumentStartHook: DOCUMENT_START_SCRIPT not supported")
-                throw UnsupportedOperationException("Android WebView document-start script injection is not supported")
-            }
-
-            val handler = WebViewCompat.addDocumentStartJavaScript(instance, script, setOf("*"))
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: handler=$handler")
-            object : CloseHandle {
-                private var closed = false
-
-                override fun close() {
-                    LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: closed=$closed")
-                    if (closed) {
-                        LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
-                        return
+        return suspendCancellableCoroutine { continuation ->
+            onMainThread {
+                runCatching {
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: on main thread")
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerDocumentStartHook: DOCUMENT_START_SCRIPT not supported")
+                        throw UnsupportedOperationException("Android WebView document-start script injection is not supported")
                     }
-                    closed = true
-                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removing handler")
-                    runOnMainThread {
-                        handler.remove()
-                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: handler removed")
+
+                    val handler = WebViewCompat.addDocumentStartJavaScript(instance, script, setOf("*"))
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: handler=$handler")
+                    object : CloseHandle {
+                        private var closed = false
+
+                        override fun close() {
+                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: closed=$closed")
+                            if (closed) {
+                                LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
+                                return
+                            }
+                            closed = true
+                            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removing handler")
+                            onMainThread {
+                                handler.remove()
+                                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: handler removed")
+                            }
+                        }
                     }
+                }.onSuccess {
+                    continuation.resume(it)
+                }.onFailure {
+                    continuation.resumeWithException(it)
                 }
             }
         }
     }
 
-    private suspend fun <T> onMainThread(block: suspend () -> T): T {
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onMainThread")
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: already on main thread, executing directly")
-            return block()
+    override suspend fun registerWebMessageHandler(handler: WebMessageConsumer): CloseHandle {
+        if (!supportWebMessageListener) {
+            LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerWebMessageHandler: WEB_MESSAGE_LISTENER not supported")
+            throw UnsupportedOperationException("Android WebView web-message listener is not supported")
         }
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: posting to main thread")
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler: handler=$handler")
         return suspendCancellableCoroutine { continuation ->
-            mainHandler.post {
-                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: executing block on main thread")
-                block.startCoroutine(continuation)
+            onMainThread {
+                runCatching {
+                    check(webMessageHandlers.add(handler)) {
+                        "Web message handler: [$handler] already added"
+                    }
+                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler: handler added")
+
+                    object : CloseHandle {
+                        private var closed = false
+
+                        override fun close() {
+                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler.close: closed=$closed")
+                            if (closed) {
+                                LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: already closed, returning")
+                                return
+                            }
+                            closed = true
+                            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: removing handler")
+                            onMainThread {
+                                webMessageHandlers.remove(handler)
+                                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: handler removed")
+                            }
+                        }
+                    }
+                }.onSuccess {
+                    continuation.resume(it)
+                }.onFailure {
+                    continuation.resumeWithException(it)
+                }
             }
         }
     }
 
-    private fun runOnMainThread(block: () -> Unit) {
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "runOnMainThread")
+    private fun onMainThread(block: () -> Unit) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onMainThread")
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "runOnMainThread: already on main thread, executing directly")
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: already on main thread, executing directly")
             block()
         } else {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "runOnMainThread: posting to main thread")
+            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: posting to main thread")
             mainHandler.post(block)
         }
     }

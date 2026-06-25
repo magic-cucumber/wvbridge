@@ -1,4 +1,6 @@
 #include "libs_helpers.h"
+#include <wvbridge/java_runtime.h>
+#include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
 
 API_EXPORT(void, close0, jlong handle) {
@@ -97,6 +99,11 @@ API_EXPORT(void, close0, jlong handle) {
             [ctx->events release];
             ctx->events = nil;
 
+            LOGGER_V("close0: removing wvbridge script message handler");
+            [ctx->webView.configuration.userContentController removeScriptMessageHandlerForName:@"wvbridge"];
+            [ctx->webMessageHandler release];
+            ctx->webMessageHandler = nil;
+
             [ctx->documentStartHooks release];
             ctx->documentStartHooks = nil;
 
@@ -113,6 +120,19 @@ API_EXPORT(void, close0, jlong handle) {
         ctx->rootLayer = nil;
 
     });
+
+    int attached = 0;
+    JNIEnv *cleanupEnv = java_runtime_get_env(&attached);
+    if (cleanupEnv) {
+        LOGGER_V("close0: deleting web message handler refs");
+        wvbridge::delete_web_message_handler_refs(
+            cleanupEnv,
+            ctx->webMessageHandlersMutex,
+            ctx->webMessageHandlers
+        );
+    }
+    java_runtime_detach_env(attached);
+    LOGGER_V("close0: web message handler refs cleanup done");
 
     LOGGER_V("close0: UI cleanup done, deleting ctx=%p", (void *) ctx);
     delete ctx;

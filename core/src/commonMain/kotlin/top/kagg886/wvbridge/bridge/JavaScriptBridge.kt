@@ -26,4 +26,38 @@ public interface JavaScriptBridge {
      * installed document-start scripts.
      */
     public suspend fun registerDocumentStartHook(script: String): CloseHandle
+
+    /**
+     * Registers a native web-message handler for the current platform.
+     *
+     * Page scripts send a string message through the platform's native `postMessage` entry point,
+     * and the message is delivered to [handler].
+     *
+     * Platform JavaScript entry points:
+     *
+     * | Platform | JavaScript call |
+     * | --- | --- |
+     * | WebView2 / Windows desktop | `window.chrome.webview.postMessage("hello")` |
+     * | WebKitGTK / Linux desktop / Apple | `window.webkit.messageHandlers.wvbridge.postMessage("hello")` |
+     * | AndroidX WebKit | `window.wvbridge.postMessage("hello")` |
+     *
+     * Limitations:
+     *
+     * - The common API delivers messages as [String] values. If a platform supports JSON or other
+     *   structured values, callers should serialize them to a string before posting.
+     * - The exact JavaScript global object shape is platform-defined and is not normalized by
+     *   core. WebView2 has a single `window.chrome.webview.postMessage` channel, while WebKit and
+     *   AndroidX expose the fixed `wvbridge` handler/object.
+     * - A handler is available only after the native platform has registered it. Register document
+     *   start hooks separately when page scripts need the bridge before normal page JavaScript runs.
+     * - Android depends on AndroidX WebKit `WEB_MESSAGE_LISTENER` support. Platforms or WebView
+     *   versions without the required native feature may throw [UnsupportedOperationException].
+     * - Origin, frame, and security restrictions are platform-specific. AndroidX WebKit uses allowed
+     *   origin rules; WebKit-style handlers are scoped to the configured content controller; WebView2
+     *   receives messages from the current WebView content.
+     * - The returned [CloseHandle] unregisters this native handler. Platform-provided JavaScript
+     *   objects may still exist after [CloseHandle.close], but messages are no longer delivered to
+     *   this handler.
+     */
+    public suspend fun registerWebMessageHandler(handler: WebMessageConsumer): CloseHandle
 }

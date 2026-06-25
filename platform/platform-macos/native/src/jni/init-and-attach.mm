@@ -1,5 +1,56 @@
 #include "libs_helpers.h"
+#include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
+
+namespace {
+
+NSString *string_from_script_message_body(id body) {
+    LOGGER_V("string_from_script_message_body: entry");
+    if (body == nil || body == [NSNull null]) {
+        LOGGER_V("string_from_script_message_body: body is nil");
+        return @"";
+    }
+    if ([body isKindOfClass:[NSString class]]) {
+        LOGGER_V("string_from_script_message_body: body is NSString");
+        return (NSString *) body;
+    }
+    if ([NSJSONSerialization isValidJSONObject:body]) {
+        NSData *data = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+        if (data) {
+            NSString *json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            NSString *result = [json autorelease] ?: @"";
+            LOGGER_V("string_from_script_message_body: json=\"%.*s\"", (int) MIN(100, [result length]), [result UTF8String]);
+            return result;
+        }
+    }
+    LOGGER_V("string_from_script_message_body: using description fallback");
+    return [body description] ?: @"";
+}
+
+}
+
+@interface WVBWebMessageHandler : NSObject <WKScriptMessageHandler>
+@property(nonatomic, assign) WebViewContext *context;
+@end
+
+@implementation WVBWebMessageHandler
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    LOGGER_V("WVBWebMessageHandler: didReceiveScriptMessage");
+    (void) userContentController;
+    if (!self.context) {
+        LOGGER_W("WVBWebMessageHandler: context is nil, dropping message");
+        return;
+    }
+    NSString *body = string_from_script_message_body(message.body);
+    LOGGER_V("WVBWebMessageHandler: message body=\"%.*s\"", (int) MIN(100, [body length]), [body UTF8String]);
+    wvbridge::dispatch_web_message_to_java(
+        self.context->webMessageHandlersMutex,
+        self.context->webMessageHandlers,
+        [body UTF8String]
+    );
+    LOGGER_V("WVBWebMessageHandler: dispatched to Java");
+}
+@end
 
 API_EXPORT(jlong, initAndAttach) {
     LOGGER_I("initAndAttach: entry");
@@ -58,6 +109,11 @@ API_EXPORT(jlong, initAndAttach) {
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
         config.defaultWebpagePreferences.allowsContentJavaScript = YES;
         config.preferences.javaScriptCanOpenWindowsAutomatically = YES;
+        LOGGER_V("initAndAttach: setting up WKScriptMessageHandler");
+        ctx->webMessageHandler = [[WVBWebMessageHandler alloc] init];
+        ctx->webMessageHandler.context = ctx;
+        [config.userContentController addScriptMessageHandler:ctx->webMessageHandler name:@"wvbridge"];
+        LOGGER_V("initAndAttach: wvbridge script message handler registered");
 
         WKWebView *wv = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)
                                            configuration:config];

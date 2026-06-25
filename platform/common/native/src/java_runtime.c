@@ -4,6 +4,7 @@
 static JavaVM* g_java_vm = NULL;
 
 void listener_support_on_load(JNIEnv* env);
+void javascript_on_load(JNIEnv* env);
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     (void) reserved;
@@ -14,6 +15,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
         return JNI_ERR;
     }
     listener_support_on_load(env);
+    javascript_on_load(env);
     logger_on_load();
 
     return JNI_VERSION_1_6;

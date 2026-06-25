@@ -1,5 +1,35 @@
 #include "libs_helpers.h"
+#include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
+
+namespace {
+
+void wvbridge_script_message_received(WebKitUserContentManager *, WebKitJavascriptResult *result, gpointer userData) {
+    LOGGER_V("wvbridge_script_message_received: entry");
+
+    auto *ctx = static_cast<WebViewContext *>(userData);
+    if (!ctx || !result) return;
+
+    JSCValue *value = webkit_javascript_result_get_js_value(result);
+    if (!value || jsc_value_is_undefined(value) || jsc_value_is_null(value)) {
+        LOGGER_V("wvbridge_script_message_received: value is undefined/null, dispatching empty message");
+        wvbridge::dispatch_web_message_to_java(ctx->web_message_handlers_mutex, ctx->web_message_handlers, "");
+        return;
+    }
+
+    gchar *stringValue = jsc_value_to_string(value);
+    std::string message = stringValue ? stringValue : "";
+    LOGGER_V("wvbridge_script_message_received: message=%.100s", message.c_str());
+    if (stringValue) g_free(stringValue);
+    wvbridge::dispatch_web_message_to_java(
+        ctx->web_message_handlers_mutex,
+        ctx->web_message_handlers,
+        message.c_str()
+    );
+    LOGGER_V("wvbridge_script_message_received: dispatched");
+}
+
+}
 
 API_EXPORT(jlong, initAndAttach) {
     LOGGER_I("initAndAttach: entry");
@@ -138,6 +168,16 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_set_halign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_set_valign(GTK_WIDGET(ctx->webview), GTK_ALIGN_FILL);
         gtk_widget_add_events(GTK_WIDGET(ctx->webview), GDK_BUTTON_PRESS_MASK);
+
+        WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(ctx->webview);
+        webkit_user_content_manager_register_script_message_handler(manager, "wvbridge");
+        ctx->web_message_handler_id = g_signal_connect(
+            manager,
+            "script-message-received::wvbridge",
+            G_CALLBACK(wvbridge_script_message_received),
+            ctx
+        );
+        LOGGER_V("initAndAttach: GTK thread - wvbridge script message handler registered");
 
         LOGGER_V("initAndAttach: GTK thread - connecting signals");
         ctx->window_button_press_handler_id = g_signal_connect(

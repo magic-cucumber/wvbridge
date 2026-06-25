@@ -1,4 +1,6 @@
 #include "libs_helpers.h"
+#include <wvbridge/java_runtime.h>
+#include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
 
 int clamp_dim(jint v) {
@@ -102,6 +104,16 @@ int clamp_dim(jint v) {
             g_signal_handler_disconnect(ctx->webview, ctx->webview_button_press_handler_id);
             ctx->webview_button_press_handler_id = 0;
         }
+        if (ctx->webview) {
+            WebKitUserContentManager *manager = webkit_web_view_get_user_content_manager(ctx->webview);
+            if (ctx->web_message_handler_id != 0) {
+                LOGGER_V("destroy_ctx_on_gtk_thread: disconnecting web message handler");
+                g_signal_handler_disconnect(manager, ctx->web_message_handler_id);
+                ctx->web_message_handler_id = 0;
+            }
+            webkit_user_content_manager_unregister_script_message_handler(manager, "wvbridge");
+            LOGGER_V("destroy_ctx_on_gtk_thread: script message handler unregistered");
+        }
 
         LOGGER_V("destroy_ctx_on_gtk_thread: destroying webview events");
         wvbridge::webview_events_destroy(ctx->events);
@@ -116,6 +128,19 @@ int clamp_dim(jint v) {
             }
             ctx->document_start_hooks.clear();
         }
+
+        LOGGER_V("destroy_ctx_on_gtk_thread: deleting web message handler refs");
+        int attached = 0;
+        JNIEnv *env = java_runtime_get_env(&attached);
+        if (env) {
+            wvbridge::delete_web_message_handler_refs(
+                env,
+                ctx->web_message_handlers_mutex,
+                ctx->web_message_handlers
+            );
+        }
+        java_runtime_detach_env(attached);
+        LOGGER_V("destroy_ctx_on_gtk_thread: web message handler refs cleanup done");
 
         // GtkWindow 销毁后，会连带销毁子树（WebView）。
         if (ctx->window) {

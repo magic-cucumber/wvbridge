@@ -1,5 +1,7 @@
 #include "libs_helpers.h"
 
+#include <wvbridge/java_runtime.h>
+#include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
 
 int clamp_dim(jint v) {
@@ -384,6 +386,13 @@ void destroy_ctx(WebViewContext *ctx) {
             webview_events_destroy(ctx->events);
             ctx->events = nullptr;
 
+            if (ctx->webview && ctx->web_message_received_registered) {
+                LOGGER_V("destroy_ctx: removing WebMessageReceived handler");
+                ctx->webview->remove_WebMessageReceived(ctx->web_message_received_token);
+                ctx->web_message_received_registered = false;
+                LOGGER_V("destroy_ctx: WebMessageReceived handler removed");
+            }
+
             if (ctx->controller) {
                 ctx->controller->Close();
                 ctx->controller.Reset();
@@ -403,6 +412,19 @@ void destroy_ctx(WebViewContext *ctx) {
         webview2_thread_destroy(ctx->thread);
         ctx->thread = nullptr;
     }
+
+    int attached = 0;
+    JNIEnv *env = java_runtime_get_env(&attached);
+    if (env) {
+        LOGGER_V("destroy_ctx: deleting web message handler refs");
+        wvbridge::delete_web_message_handler_refs(
+            env,
+            ctx->web_message_handlers_mutex,
+            ctx->web_message_handlers
+        );
+    }
+    java_runtime_detach_env(attached);
+    LOGGER_V("destroy_ctx: web message handler refs cleanup done");
 
     delete ctx;
     LOGGER_V("destroy_ctx: ctx deleted");

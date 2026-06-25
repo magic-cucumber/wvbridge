@@ -8,6 +8,7 @@ set(WVBRIDGE_COMMON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_library(wvbridge_platform_common OBJECT
         src/java_runtime.c
+        src/javascript.cpp
         src/listener_support.cpp
         src/logger.cpp
         src/page-loading-start-listener.cpp
