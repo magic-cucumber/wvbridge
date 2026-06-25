@@ -1,4 +1,5 @@
 #include "libs_helpers.h"
+#include "javascript-helpers.h"
 #include <wvbridge/logger.h>
 
 API_EXPORT(jlong, initAndAttach) {
@@ -214,6 +215,23 @@ API_EXPORT(jlong, initAndAttach) {
                                     settings->put_IsWebMessageEnabled(TRUE);
                                     LOGGER_V("initAndAttach: settings configured");
                                 }
+
+                                HRESULT web_message_hr = ensure_web_message_registered(ctx);
+                                if (FAILED(web_message_hr)) {
+                                    LOGGER_V("initAndAttach: add_WebMessageReceived failed, hr=0x%lx", (unsigned long)web_message_hr);
+                                    complete_once(
+                                        state,
+                                        web_message_hr,
+                                        build_init_error(
+                                            "add_WebMessageReceived failed",
+                                            web_message_hr,
+                                            browser_executable_folder,
+                                            user_data_folder
+                                        )
+                                    );
+                                    return S_OK;
+                                }
+                                LOGGER_V("initAndAttach: web message handler registered");
 
                                 ctx->events = webview_events_create(ctx);
                                 LOGGER_V("initAndAttach: webview events created");

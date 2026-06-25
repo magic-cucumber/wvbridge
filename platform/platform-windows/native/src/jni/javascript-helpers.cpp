@@ -1,5 +1,6 @@
 #include "javascript-helpers.h"
 
+#include <cwchar>
 #include <sstream>
 
 std::wstring jstring_to_wstring(JNIEnv *env, jstring value) {
@@ -65,33 +66,72 @@ HRESULT ensure_web_message_registered(WebViewContext *ctx) {
 
     auto callback = Callback<ICoreWebView2WebMessageReceivedEventHandler>(
         [ctx](ICoreWebView2 *, ICoreWebView2WebMessageReceivedEventArgs *args) -> HRESULT {
-            if (!args) return S_OK;
+            LOGGER_V("ensure_web_message_registered: WebMessageReceived callback ctx=%p args=%p", ctx, args);
+            if (!args) {
+                LOGGER_V("ensure_web_message_registered: WebMessageReceived args is null, ignoring");
+                return S_OK;
+            }
 
             LPWSTR message = nullptr;
+            LOGGER_V("ensure_web_message_registered: calling TryGetWebMessageAsString");
             HRESULT hr = args->TryGetWebMessageAsString(&message);
+            LOGGER_V(
+                "ensure_web_message_registered: TryGetWebMessageAsString hr=0x%lx message=%p",
+                (unsigned long)hr,
+                message
+            );
             if (SUCCEEDED(hr) && message) {
+                LOGGER_V(
+                    "ensure_web_message_registered: dispatching string message len=%zu preview=%.*ls",
+                    wcslen(message),
+                    100,
+                    message
+                );
                 wvbridge::dispatch_web_message_to_java(
                     ctx->web_message_handlers_mutex,
                     ctx->web_message_handlers,
                     message
                 );
+                LOGGER_V("ensure_web_message_registered: string message dispatched, freeing buffer");
                 CoTaskMemFree(message);
                 return S_OK;
             }
-            if (message) CoTaskMemFree(message);
+            if (message) {
+                LOGGER_V("ensure_web_message_registered: freeing unused string buffer after hr=0x%lx", (unsigned long)hr);
+                CoTaskMemFree(message);
+            } else {
+                LOGGER_V("ensure_web_message_registered: no string payload available, falling back to JSON");
+            }
 
             LPWSTR json = nullptr;
+            LOGGER_V("ensure_web_message_registered: calling get_WebMessageAsJson");
             hr = args->get_WebMessageAsJson(&json);
+            LOGGER_V(
+                "ensure_web_message_registered: get_WebMessageAsJson hr=0x%lx json=%p",
+                (unsigned long)hr,
+                json
+            );
             if (SUCCEEDED(hr) && json) {
+                LOGGER_V(
+                    "ensure_web_message_registered: dispatching JSON message len=%zu preview=%.*ls",
+                    wcslen(json),
+                    100,
+                    json
+                );
                 wvbridge::dispatch_web_message_to_java(
                     ctx->web_message_handlers_mutex,
                     ctx->web_message_handlers,
                     json
                 );
+                LOGGER_V("ensure_web_message_registered: JSON message dispatched, freeing buffer");
                 CoTaskMemFree(json);
             } else if (json) {
+                LOGGER_V("ensure_web_message_registered: freeing JSON buffer after failed hr=0x%lx", (unsigned long)hr);
                 CoTaskMemFree(json);
+            } else {
+                LOGGER_V("ensure_web_message_registered: JSON payload unavailable, hr=0x%lx", (unsigned long)hr);
             }
+            LOGGER_V("ensure_web_message_registered: WebMessageReceived callback complete");
             return S_OK;
         }
     );
