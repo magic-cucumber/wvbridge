@@ -38,11 +38,14 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
             return;
         }
 
-        LOGGER_V("evaluateScript: calling webkit_web_view_run_javascript");
+        LOGGER_V("evaluateScript: calling webkit_web_view_evaluate_javascript");
         auto *completionPtr = new std::shared_ptr<std::promise<Result>>(completion);
-        webkit_web_view_run_javascript(
+        webkit_web_view_evaluate_javascript(
             ctx->webview,
             source.c_str(),
+            -1,
+            nullptr,
+            nullptr,
             nullptr,
             [](GObject *object, GAsyncResult *asyncResult, gpointer userData) {
                 auto completionHolder = static_cast<std::shared_ptr<std::promise<Result>> *>(userData);
@@ -50,7 +53,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
                 delete completionHolder;
 
                 GError *error = nullptr;
-                WebKitJavascriptResult *jsResult = webkit_web_view_run_javascript_finish(
+                JSCValue *value = webkit_web_view_evaluate_javascript_finish(
                     WEBKIT_WEB_VIEW(object),
                     asyncResult,
                     &error
@@ -64,22 +67,21 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
                     return;
                 }
 
-                if (!jsResult) {
-                    LOGGER_V("evaluateScript: async callback no jsResult");
+                if (!value) {
+                    LOGGER_V("evaluateScript: async callback no value");
                     completion->set_value(Result{true, false, "", ""});
                     return;
                 }
 
-                JSCValue *value = webkit_javascript_result_get_js_value(jsResult);
                 if (!value || jsc_value_is_undefined(value)) {
                     LOGGER_V("evaluateScript: async callback value is undefined");
-                    webkit_javascript_result_unref(jsResult);
+                    g_object_unref(value);
                     completion->set_value(Result{true, false, "", ""});
                     return;
                 }
                 if (jsc_value_is_null(value)) {
                     LOGGER_V("evaluateScript: async callback value is null");
-                    webkit_javascript_result_unref(jsResult);
+                    g_object_unref(value);
                     completion->set_value(Result{true, true, "null", ""});
                     return;
                 }
@@ -87,7 +89,7 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
                 gchar *stringValue = value ? jsc_value_to_string(value) : nullptr;
                 std::string output = stringValue ? stringValue : "";
                 if (stringValue) g_free(stringValue);
-                webkit_javascript_result_unref(jsResult);
+                g_object_unref(value);
 
                 LOGGER_V("evaluateScript: async callback result=%s", output.c_str());
                 completion->set_value(Result{true, true, output, ""});
