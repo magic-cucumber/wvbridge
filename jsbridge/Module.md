@@ -92,6 +92,51 @@ window.wvbridge.postMessage("profile:update", {
 
 Call `closeHandle.close()` when the native handler is no longer needed.
 
+### Call Native From JavaScript And Receive Result
+
+Use `registerWebMessageHandlerWithReply(type, handle)` when JavaScript needs to call a native
+handler and receive one result. Register the Kotlin handler first, then call
+`window.wvbridge.postMessageAndReceiveResult` from JavaScript.
+
+The Kotlin handler is suspendable. It receives the posted values and a suspend `reply(JSValue)`
+callback. Call `reply` exactly once with the value you want JavaScript to receive:
+
+```kotlin
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import top.kagg886.wvbridge.js.registerWebMessageHandlerWithReply
+import top.kagg886.wvbridge.js.protocol.JSValue
+
+val closeHandle = webViewController.bridge.registerWebMessageHandlerWithReply("profile:save") { values, reply ->
+    val payload = values.firstOrNull()
+    println(payload)
+
+    reply(
+        JSValue.Serializable(
+            JsonObject(mapOf("ok" to JsonPrimitive(true)))
+        )
+    )
+}
+```
+
+After the native handler is registered, JavaScript can post a typed message and wait for the
+result:
+
+```javascript
+window.wvbridge.postMessageAndReceiveResult("profile:save", {
+    timeout: 5000,
+    args: [{ name: "Kagg886", loggedIn: true }],
+    success(result) {
+        console.log(result);
+    },
+    error(reason) {
+        console.error(reason);
+    },
+});
+```
+
+Call `closeHandle.close()` when the native handler is no longer needed.
+
 ### Receive Result From JavaScript
 
 Use `postMessageAndReceiveResult(type, timeout, args...)` when native code needs to call a
@@ -158,3 +203,5 @@ Legend: ✅ Supported; 🚧 Under construction; 🧪 Untested.
 |----------------------------------|---------|-----|-------------|-----------|-----------|
 | Typed JavaScript code evaluation | ✅       | ✅   | ✅           | 🧪        | ✅         |
 | `postMessage`                    | ✅       | ✅   | ✅           | ✅         | ✅         |
+| Native -> JavaScript result      | ✅       | ✅   | ✅           | ✅         | ✅         |
+| JavaScript -> native result      | ✅       | ✅   | ✅           | ✅         | ✅         |

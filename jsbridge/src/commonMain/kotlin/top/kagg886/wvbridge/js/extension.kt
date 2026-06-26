@@ -1,20 +1,28 @@
 package top.kagg886.wvbridge.js
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.js.internal.WebViewBridgeExtInstallScript
+import top.kagg886.wvbridge.js.internal.JavaScriptBridgeReplyTokenPrefix
+import top.kagg886.wvbridge.js.internal.JavaScriptBridgeResultTokenPrefix
 import top.kagg886.wvbridge.js.internal.base64Encode
 import top.kagg886.wvbridge.js.internal.iife
 import top.kagg886.wvbridge.js.protocol.JSPacket
 import top.kagg886.wvbridge.js.protocol.JSValue
 import top.kagg886.wvbridge.js.protocol.JavaScriptBridgeMessageHandler
+import top.kagg886.wvbridge.js.protocol.JavaScriptBridgeMessageHandlerWithReply
 import kotlin.time.Duration
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-
 
 /**
  * Evaluates [script] as a JavaScript function body and normalizes the result to [JSValue].
@@ -81,6 +89,79 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(
         }
 
         handle.handle(*packet.messages.toTypedArray())
+    }
+}
+
+/**
+ * Registers a JavaScript bridge message handler for packets sent by
+ * `window.wvbridge.postMessageAndReceiveResult(type, options)`.
+ *
+ * The page-side API appends an internal reply token after `options.args`. This function removes
+ * that token before invoking [handle] and provides a reply callback that calls the generated
+ * `window.__wvbridge__[uuid]` function in the page.
+ *
+ * Calling [reply] after the JavaScript-side timeout is harmless from Kotlin's perspective, but the
+ * page may no longer have the generated function installed.
+ *
+ * @param type application-level packet type to accept.
+ * @param handle callback invoked with decoded payload values and a reply callback.
+ */
+public suspend fun JavaScriptBridge.registerWebMessageHandlerWithReply(
+    type: String,
+    handle: JavaScriptBridgeMessageHandlerWithReply,
+): CloseHandle {
+    ensureJavaScriptBridgePostMessageInstalled()
+    val scope = CoroutineScope(SupervisorJob() + currentCoroutineContext().minusKey(Job))
+    val rawHandle = registerWebMessageHandler { message ->
+        val packet = runCatching {
+            with(JSPacket) {
+                message.toJSPacket()
+            }
+        }.getOrNull() ?: return@registerWebMessageHandler
+
+        if (packet.type != type) {
+            return@registerWebMessageHandler
+        }
+
+        val replyToken = packet.messages.lastOrNull() as? JSValue.ScriptObject
+        if (replyToken?.type != "string" || !replyToken.value.startsWith(JavaScriptBridgeReplyTokenPrefix)) {
+            return@registerWebMessageHandler
+        }
+
+        val replyId = replyToken.value.removePrefix(JavaScriptBridgeReplyTokenPrefix)
+        val values = packet.messages.dropLast(1)
+        val reply: suspend (JSValue) -> Unit = { value ->
+            runCatching {
+                val script = iife(
+                    script = """
+                            const replyId = window.__wvbridge__.decodeBase64("${replyId.base64Encode()}");
+                            const reply = window.__wvbridge__[replyId];
+                            if (typeof reply !== "function") {
+                                return false;
+                            }
+
+                            reply(${value.toJavaScriptExpression("JavaScriptBridge.registerWebMessageHandlerWithReply.reply")});
+                            return true;
+                        """.trimIndent()
+                )
+
+                evaluateScript(script)
+                    .requireJavaScriptBooleanResult("JavaScriptBridge.registerWebMessageHandlerWithReply.reply")
+            }
+        }
+
+        scope.launch {
+            runCatching {
+                handle.handle(values, reply)
+            }
+        }
+    }
+
+    return object : CloseHandle {
+        override fun close() {
+            scope.cancel()
+            rawHandle.close()
+        }
     }
 }
 
@@ -160,7 +241,7 @@ public suspend fun JavaScriptBridge.postMessageAndReceiveResult(
     ensureJavaScriptBridgePostMessageInstalled()
 
     val deferred = CompletableDeferred<JSValue>()
-    val responseToken = "__wvbridge_result__:${Uuid.random().toHexString()}"
+    val responseToken = "$JavaScriptBridgeResultTokenPrefix${Uuid.random().toHexString()}"
     val handle = registerWebMessageHandler(responseToken) { values ->
         deferred.complete(values.firstOrNull() ?: JSValue.Undefined)
     }

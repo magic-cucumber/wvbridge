@@ -15,6 +15,7 @@ package top.kagg886.wvbridge.js.internal
  * | Method | Purpose | Parameters | Return value |
  * |--------|---------|------------|--------------|
  * | `postMessage(type, ...messages)` | Sends a typed packet from JavaScript to native code. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandler(type)`. | `type`: packet type, converted with `String(type)`. `messages`: payload values. Each value is normalized to a `JSValue` shape before being sent. | `undefined`. Throws when no native postMessage transport is available. |
+ * | `postMessageAndReceiveResult(type, options)` | Sends a typed packet from JavaScript to native code and waits for Kotlin to call the generated reply function. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandlerWithReply(type)`. | `type`: packet type. `options`: `{ timeout, args, success, error }`; `args` is an array appended to the packet before the internal reply token. | `undefined`. Calls `success(result)` on reply or `error(error)` on timeout / setup failure. |
  * | `addEventListener(type, listener)` | Registers a JavaScript listener for messages dispatched from native code with `JavaScriptBridge.postMessage(type, ...values)`. | `type`: event type, converted with `String(type)`. `listener`: function called as `listener.call(window.wvbridge, ...args)`. | `undefined`. Throws `TypeError` if `listener` is not a function. |
  * | `removeEventListener(type, listener)` | Removes a previously registered listener for the given type. | `type`: event type. `listener`: the same function reference passed to `addEventListener`. | `undefined`. Missing listeners are ignored. |
  * | `dispatchEvent(type, ...args)` | Dispatches an event to JavaScript listeners registered for `type`. It is mainly called by native-side `JavaScriptBridge.postMessage`. | `type`: event type. `args`: values delivered to listeners. If no args are provided, listeners receive one `undefined` argument. | `true` when listeners existed and were called, otherwise `false`. |
@@ -182,10 +183,29 @@ internal val WebViewBridgeExtInstallScript: String = iife(
 
         const messageListeners = new Map();
         const wvbridge = window.wvbridge || {};
+        const replyTokenPrefix = "$JavaScriptBridgeReplyTokenPrefix";
+
+        const randomReplyId = () => {
+            if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+                return globalThis.crypto.randomUUID().replace(/-/g, "");
+            }
+
+            const randomValues = new Uint8Array(16);
+            if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+                globalThis.crypto.getRandomValues(randomValues);
+            } else {
+                for (let i = 0; i < randomValues.length; i++) {
+                    randomValues[i] = Math.floor(Math.random() * 256);
+                }
+            }
+
+            return Array.from(randomValues, byte => byte.toString(16).padStart(2, "0")).join("");
+        };
 
         const bridge = {
             valueHeader: "$JavaScriptBridgeValueHeader",
             packetHeader: "$JavaScriptBridgePacketHeader",
+            replyTokenPrefix,
             encodeBase64,
             decodeBase64,
             toErrorValueObject,
@@ -230,6 +250,64 @@ internal val WebViewBridgeExtInstallScript: String = iife(
 
         wvbridge.postMessage = (type, ...messages) => {
             bridge.postToNative(bridge.toPacket(type, messages));
+        };
+
+        wvbridge.postMessageAndReceiveResult = (type, options = {}) => {
+            const {
+                timeout = 30000,
+                args = [],
+                success = () => {},
+                error = () => {}
+            } = options || {};
+
+            if (!Array.isArray(args)) {
+                throw new TypeError("wvbridge.postMessageAndReceiveResult options.args must be an array");
+            }
+
+            if (typeof success !== "function") {
+                throw new TypeError("wvbridge.postMessageAndReceiveResult options.success must be a function");
+            }
+
+            if (typeof error !== "function") {
+                throw new TypeError("wvbridge.postMessageAndReceiveResult options.error must be a function");
+            }
+
+            const callbackId = randomReplyId();
+            let completed = false;
+            let timeoutHandle;
+
+            const cleanup = () => {
+                if (timeoutHandle !== undefined) {
+                    clearTimeout(timeoutHandle);
+                    timeoutHandle = undefined;
+                }
+
+                delete bridge[callbackId];
+            };
+
+            bridge[callbackId] = (result) => {
+                if (completed) return;
+                completed = true;
+                cleanup();
+                success(result);
+            };
+
+            timeoutHandle = setTimeout(() => {
+                if (completed) return;
+                completed = true;
+                cleanup();
+                error(new Error("wvbridge.postMessageAndReceiveResult timed out"));
+            }, Number(timeout));
+
+            try {
+                wvbridge.postMessage(type, ...args, replyTokenPrefix + callbackId);
+            } catch (caught) {
+                if (!completed) {
+                    completed = true;
+                    cleanup();
+                    error(caught);
+                }
+            }
         };
 
         wvbridge.addEventListener = (type, listener) => {

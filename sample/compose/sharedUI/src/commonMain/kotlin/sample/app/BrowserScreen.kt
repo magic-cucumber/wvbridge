@@ -66,6 +66,7 @@ import top.kagg886.wvbridge.js.evaluateScriptValue
 import top.kagg886.wvbridge.js.postMessage
 import top.kagg886.wvbridge.js.postMessageAndReceiveResult
 import top.kagg886.wvbridge.js.registerWebMessageHandler
+import top.kagg886.wvbridge.js.registerWebMessageHandlerWithReply
 import top.kagg886.wvbridge.js.protocol.JSValue
 import top.kagg886.wvbridge.util.LoggerReceiver
 import kotlin.time.Clock
@@ -111,9 +112,8 @@ internal fun BrowserScreen(
 ) {
     val scope = rememberCoroutineScope()
     var documentStartHook by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
-    var messageBridgeHandle by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
+    var jsBridgeTestHandle by remember(webViewController) { mutableStateOf<CloseHandle?>(null) }
     var sendMessageCount by remember(webViewController) { mutableStateOf(0) }
-    var javaScriptTestListenersInstalled by remember(webViewController) { mutableStateOf(false) }
     val logs = remember { mutableStateListOf<String>() }
 
     fun appendLog(message: String) {
@@ -141,8 +141,8 @@ internal fun BrowserScreen(
         onDispose {
             documentStartHook?.close()
             documentStartHook = null
-            messageBridgeHandle?.close()
-            messageBridgeHandle = null
+            jsBridgeTestHandle?.close()
+            jsBridgeTestHandle = null
         }
     }
 
@@ -204,11 +204,15 @@ internal fun BrowserScreen(
                     }
                 }
             },
-            onToggleMessageBridge = {
-                if (messageBridgeHandle == null) {
+            onToggleJavaScriptBridgeTestCode = {
+                if (jsBridgeTestHandle == null) {
                     scope.launch {
+                        var messageHandle: CloseHandle? = null
+                        var replyHandle: CloseHandle? = null
+                        var hookHandle: CloseHandle? = null
+
                         val result = runCatching {
-                            webViewController.bridge.registerWebMessageHandler(SampleMessageType) { values ->
+                            messageHandle = webViewController.bridge.registerWebMessageHandler(SampleMessageType) { values ->
                                 scope.launch {
                                     val value = values.firstOrNull() ?: JSValue.Undefined
                                     appendLog("JS message [$SampleMessageType]: ${value.formatForDisplay()}")
@@ -217,22 +221,60 @@ internal fun BrowserScreen(
                                     }
                                 }
                             }
+
+                            replyHandle = webViewController.bridge.registerWebMessageHandlerWithReply(NativeReplyMessageType) { values, reply ->
+                                val value = values.firstOrNull() ?: JSValue.Undefined
+                                appendLog("JS result request [$NativeReplyMessageType]: ${value.formatForDisplay()}")
+                                reply(
+                                    JSValue.Serializable(
+                                        JsonObject(
+                                            mapOf(
+                                                "ok" to JsonPrimitive(true),
+                                                "from" to JsonPrimitive("kotlin"),
+                                                "count" to JsonPrimitive(sendMessageCount),
+                                                "received" to JsonPrimitive(value.formatForDisplay()),
+                                            )
+                                        )
+                                    )
+                                )
+                            }
+
+                            hookHandle = webViewController.bridge.registerDocumentStartHook(JavaScriptBridgeTestListenersInstallScript)
+                            webViewController.bridge.evaluateScript(JavaScriptBridgeTestListenersInstallScript)
                         }
-                        result.onSuccess { handle ->
-                            messageBridgeHandle = handle
-                            appendLog("Message bridge registered for type '$SampleMessageType'.")
+                        result.onSuccess {
+                            val installedMessageHandle = checkNotNull(messageHandle)
+                            val installedReplyHandle = checkNotNull(replyHandle)
+                            val installedHookHandle = checkNotNull(hookHandle)
+                            jsBridgeTestHandle = object : CloseHandle {
+                                override fun close() {
+                                    installedMessageHandle.close()
+                                    installedReplyHandle.close()
+                                    installedHookHandle.close()
+                                }
+                            }
+                            appendLog("JSBridge test code installed.")
                         }.onFailure { error ->
-                            onMessage("Message Bridge", error.message ?: error.toString())
+                            messageHandle?.close()
+                            replyHandle?.close()
+                            hookHandle?.close()
+                            onMessage("JSBridge Test Code", error.message ?: error.toString())
                         }
                     }
                 } else {
-                    runCatching {
-                        messageBridgeHandle?.close()
-                    }.onSuccess {
-                        messageBridgeHandle = null
-                        appendLog("Message bridge unregistered.")
-                    }.onFailure { error ->
-                        onMessage("Message Bridge", error.message ?: error.toString())
+                    scope.launch {
+                        val handle = jsBridgeTestHandle
+                        jsBridgeTestHandle = null
+                        val result = runCatching {
+                            webViewController.bridge.evaluateScriptValue(JavaScriptBridgeTestListenersUninstallScript)
+                        }
+
+                        handle?.close()
+                        result.onSuccess { value ->
+                            appendLog("JSBridge test code uninstalled: ${value.formatForDisplay()}")
+                        }.onFailure { error ->
+                            onMessage("JSBridge Test Code", error.message ?: error.toString())
+                        }
                     }
                 }
             },
@@ -256,21 +298,13 @@ internal fun BrowserScreen(
                     }
                 }
             },
-            onInstallJavaScriptTestListeners = {
-                scope.launch {
-                    val result = runCatching {
-                        webViewController.bridge.evaluateScriptValue(JavaScriptBridgeTestListenersScript)
-                    }
-                    result.onSuccess { value ->
-                        javaScriptTestListenersInstalled = true
-                        appendLog("JavaScript test listeners installed: ${value.formatForDisplay()}")
-                    }.onFailure { error ->
-                        onMessage("JavaScript Test Listeners", error.message ?: error.toString())
-                    }
-                }
-            },
             onPostMessageToJavaScript = {
                 scope.launch {
+                    if (jsBridgeTestHandle == null) {
+                        onMessage("JSBridge Test Code", "Install JSBridge test code before running this test.")
+                        return@launch
+                    }
+
                     val result = runCatching {
                         webViewController.bridge.postMessage(
                             NativeNotifyMessageType,
@@ -293,6 +327,11 @@ internal fun BrowserScreen(
             },
             onPostMessageAndReceiveResult = {
                 scope.launch {
+                    if (jsBridgeTestHandle == null) {
+                        onMessage("JSBridge Test Code", "Install JSBridge test code before running this test.")
+                        return@launch
+                    }
+
                     val result = runCatching {
                         webViewController.bridge.postMessageAndReceiveResult(
                             NativeRequestMessageType,
@@ -318,6 +357,11 @@ internal fun BrowserScreen(
             },
             onSendMessageFromJavaScript = {
                 scope.launch {
+                    if (jsBridgeTestHandle == null) {
+                        onMessage("JSBridge Test Code", "Install JSBridge test code before running this test.")
+                        return@launch
+                    }
+
                     val result = runCatching {
                         webViewController.bridge.evaluateScriptValue(
                             """
@@ -331,11 +375,45 @@ internal fun BrowserScreen(
                     }
                 }
             },
+            onCallNativeAndReceiveResultFromJavaScript = {
+                scope.launch {
+                    if (jsBridgeTestHandle == null) {
+                        onMessage("JSBridge Test Code", "Install JSBridge test code before running this test.")
+                        return@launch
+                    }
+
+                    val result = runCatching {
+                        webViewController.bridge.evaluateScriptValue(
+                            """
+                                window.wvbridge.postMessageAndReceiveResult("$NativeReplyMessageType", {
+                                    timeout: 5000,
+                                    args: [{
+                                        from: "javascript",
+                                        title: document.title,
+                                        href: location.href,
+                                    }],
+                                    success: (result) => {
+                                        console.log("wvbridge JS call native result success", result);
+                                    },
+                                    error: (error) => {
+                                        console.log("wvbridge JS call native result error", error);
+                                    },
+                                });
+                                return true;
+                            """.trimIndent()
+                        )
+                    }
+                    result.onSuccess { value ->
+                        appendLog("Test JS Send Code To Fetch Native Reply dispatched: ${value.formatForDisplay()}")
+                    }.onFailure { error ->
+                        onMessage("Test JS Send Code To Fetch Native Reply", error.message ?: error.toString())
+                    }
+                }
+            },
             navigator = webViewController.navigator,
             isLoading = webViewController.loadingState is LoadingState.Loading,
             isDocumentStartHookInstalled = documentStartHook != null,
-            isMessageBridgeRegistered = messageBridgeHandle != null,
-            areJavaScriptTestListenersInstalled = javaScriptTestListenersInstalled,
+            isJavaScriptBridgeTestCodeInstalled = jsBridgeTestHandle != null,
         )
         WebView(
             controller = webViewController,
@@ -356,17 +434,16 @@ private fun BrowserToolbar(
     onSubmitUrl: () -> Unit,
     onRunJavaScript: () -> Unit,
     onToggleDocumentStartHook: () -> Unit,
-    onToggleMessageBridge: () -> Unit,
+    onToggleJavaScriptBridgeTestCode: () -> Unit,
     onEvaluateTypedValue: () -> Unit,
-    onInstallJavaScriptTestListeners: () -> Unit,
     onPostMessageToJavaScript: () -> Unit,
     onPostMessageAndReceiveResult: () -> Unit,
     onSendMessageFromJavaScript: () -> Unit,
+    onCallNativeAndReceiveResultFromJavaScript: () -> Unit,
     navigator: WebViewNavigator,
     isLoading: Boolean,
     isDocumentStartHookInstalled: Boolean,
-    isMessageBridgeRegistered: Boolean,
-    areJavaScriptTestListenersInstalled: Boolean,
+    isJavaScriptBridgeTestCodeInstalled: Boolean,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -425,28 +502,28 @@ private fun BrowserToolbar(
                 onClick(onToggleDocumentStartHook)
             }
             item {
-                icon(if (isMessageBridgeRegistered) Icons.Filled.Delete else Icons.Filled.Add)
-                text(if (isMessageBridgeRegistered) "Unregister message bridge" else "Register message bridge")
-                onClick(onToggleMessageBridge)
+                icon(if (isJavaScriptBridgeTestCodeInstalled) Icons.Filled.Delete else Icons.Filled.Add)
+                text(if (isJavaScriptBridgeTestCodeInstalled) "Uninstall JSBridge test code" else "Install JSBridge test code")
+                onClick(onToggleJavaScriptBridgeTestCode)
             }
             item {
                 icon(Icons.Filled.Code)
-                text(if (areJavaScriptTestListenersInstalled) "Refresh JavaScript test listeners" else "Install JavaScript test listeners")
-                onClick(onInstallJavaScriptTestListeners)
-            }
-            item {
-                icon(Icons.Filled.Code)
-                text("Send JS message to Kotlin")
+                text("Test JS Send Code To Native")
                 onClick(onSendMessageFromJavaScript)
             }
             item {
                 icon(Icons.Filled.Code)
-                text("Post message to JavaScript")
+                text("Test JS Send Code To Fetch Native Reply")
+                onClick(onCallNativeAndReceiveResultFromJavaScript)
+            }
+            item {
+                icon(Icons.Filled.Code)
+                text("Test Native Call JS")
                 onClick(onPostMessageToJavaScript)
             }
             item {
                 icon(Icons.Filled.Code)
-                text("Post message and receive result")
+                text("Test Native Call JS And Fetch Reply")
                 onClick(onPostMessageAndReceiveResult)
             }
         }
@@ -510,6 +587,7 @@ private fun LogPanel(
 private const val SampleMessageType = "sample"
 private const val NativeNotifyMessageType = "native:notify"
 private const val NativeRequestMessageType = "native:request"
+private const val NativeReplyMessageType = "native:reply"
 private const val MaxLogLines = 200
 
 private val DocumentStartHookScript = """
@@ -538,47 +616,71 @@ private val DocumentStartHookScript = """
     }
 """.trimIndent()
 
-private val JavaScriptBridgeTestListenersScript = """
-    if (!window.__wvbridgeSampleListenersInstalled) {
-        window.__wvbridgeSampleListenersInstalled = true;
+private val JavaScriptBridgeTestListenersInstallScript = """
+    (() => {
+        if (!window.__wvbridgeSampleListeners) {
+            const listeners = {
+                notify: (payload) => {
+                    console.log("wvbridge native notify", payload);
+                    const id = "wvbridge-native-notify-log";
+                    let div = document.getElementById(id);
+                    if (!div) {
+                        div = document.createElement("div");
+                        div.id = id;
+                        div.style.cssText = [
+                            "position: fixed",
+                            "left: 16px",
+                            "bottom: 16px",
+                            "z-index: 2147483647",
+                            "padding: 10px 12px",
+                            "background: #1d4ed8",
+                            "color: white",
+                            "font: 14px sans-serif",
+                            "border-radius: 6px",
+                            "box-shadow: 0 4px 14px rgba(0,0,0,.25)"
+                        ].join(";");
+                        document.body.appendChild(div);
+                    }
+                    div.textContent = "Native message: " + JSON.stringify(payload);
+                },
+                request: (payload, reply) => {
+                    reply({
+                        title: document.title,
+                        href: location.href,
+                        readyState: document.readyState,
+                        payload,
+                    });
+                }
+            };
 
-        window.wvbridge.addEventListener("$NativeNotifyMessageType", (payload) => {
-            console.log("wvbridge native notify", payload);
-            const id = "wvbridge-native-notify-log";
-            let div = document.getElementById(id);
-            if (!div) {
-                div = document.createElement("div");
-                div.id = id;
-                div.style.cssText = [
-                    "position: fixed",
-                    "left: 16px",
-                    "bottom: 16px",
-                    "z-index: 2147483647",
-                    "padding: 10px 12px",
-                    "background: #1d4ed8",
-                    "color: white",
-                    "font: 14px sans-serif",
-                    "border-radius: 6px",
-                    "box-shadow: 0 4px 14px rgba(0,0,0,.25)"
-                ].join(";");
-                document.body.appendChild(div);
-            }
-            div.textContent = "Native message: " + JSON.stringify(payload);
-        });
+            window.wvbridge.addEventListener("$NativeNotifyMessageType", listeners.notify);
+            window.wvbridge.addEventListener("$NativeRequestMessageType", listeners.request);
+            window.__wvbridgeSampleListeners = listeners;
+        }
 
-        window.wvbridge.addEventListener("$NativeRequestMessageType", (payload, reply) => {
-            reply({
-                title: document.title,
-                href: location.href,
-                readyState: document.readyState,
-                payload,
-            });
-        });
+        return {
+            notifyType: "$NativeNotifyMessageType",
+            requestType: "$NativeRequestMessageType",
+            installed: window.__wvbridgeSampleListeners !== undefined,
+        };
+    })();
+""".trimIndent()
+
+private val JavaScriptBridgeTestListenersUninstallScript = """
+    if (window.__wvbridgeSampleListeners) {
+        window.wvbridge.removeEventListener("$NativeNotifyMessageType", window.__wvbridgeSampleListeners.notify);
+        window.wvbridge.removeEventListener("$NativeRequestMessageType", window.__wvbridgeSampleListeners.request);
+        delete window.__wvbridgeSampleListeners;
+    }
+
+    const notifyLog = document.getElementById("wvbridge-native-notify-log");
+    if (notifyLog) {
+        notifyLog.remove();
     }
 
     return {
         notifyType: "$NativeNotifyMessageType",
         requestType: "$NativeRequestMessageType",
-        installed: window.__wvbridgeSampleListenersInstalled,
+        installed: window.__wvbridgeSampleListeners !== undefined,
     };
 """.trimIndent()
