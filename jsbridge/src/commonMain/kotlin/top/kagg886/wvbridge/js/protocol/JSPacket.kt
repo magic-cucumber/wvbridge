@@ -28,11 +28,6 @@ internal data class JSPacket(
             val json = value.substring(separator + 1).base64Decode()
             return JsonCodec.decodeFromString(json)
         }
-
-        internal fun JSPacket.toJavaScriptBridgeString(): String {
-            return JavaScriptBridgePacketHeader + ":" + JsonCodec.encodeToString(this).base64Encode()
-        }
-
         private fun String.unwrapWebViewStringLiteral(): String {
             return runCatching {
                 JsonCodec.decodeFromString<String>(this)

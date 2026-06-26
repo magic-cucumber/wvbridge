@@ -217,12 +217,17 @@ internal val WebViewBridgeExtInstallScript: String = iife(
             }
         };
 
-        wvbridge.dispatchEvent = (type, message) => {
+        wvbridge.dispatchEvent = (type, ...args) => {
             const listeners = getMessageListeners(type);
             if (!listeners) return false;
 
+            const parameters = (args.length === 0 ? [undefined] : args).map((value) => isJSValueObject(value)
+                ? fromJSValueObject(value)
+                : value
+            );
+
             for (const listener of Array.from(listeners)) {
-                listener.call(wvbridge, message, String(type));
+                listener.call(wvbridge, String(type), ...parameters);
             }
 
             return true;

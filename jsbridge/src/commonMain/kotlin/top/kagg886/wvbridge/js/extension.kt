@@ -80,8 +80,8 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
  * `window.wvbridge.addEventListener(type, listener)`.
  *
  * On first use this installs the bridge post-message bootstrap script into the document-start hook
- * list and evaluates it in the current page. [value] is then delivered to listeners for [type] by
- * calling `window.wvbridge.dispatchEvent(type, value)`.
+ * list and evaluates it in the current page. [value] is then delivered to listeners as
+ * `listener(type, value)` by calling `window.wvbridge.dispatchEvent(type, value)`.
  *
  * Only [JSValue.Undefined], [JSValue.Null], and [JSValue.Serializable] can be sent because the
  * page-side value must be representable as `undefined`, `null`, or JSON.
@@ -107,12 +107,10 @@ public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
     }
 
     val script = """
-        (() => {
-            window.wvbridge.dispatchEvent(
-                window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
-                $valueExpression
-            );
-        })()
+        window.wvbridge.dispatchEvent(
+            window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
+            $valueExpression
+        );
     """.trimIndent()
 
 
