@@ -7,5 +7,5 @@ internal fun JSValue.formatForDisplay(): String = when (this) {
     JSValue.Undefined -> "undefined"
     is JSValue.Error -> stacktrace
     is JSValue.ScriptObject -> "$type: $value"
-    is JSValue.Serializable -> value
+    is JSValue.Serializable -> value.toString()
 }

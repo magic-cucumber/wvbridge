@@ -20,6 +20,7 @@ dependencies {
 
     api(libs.android.gradle.plugin)
     api(libs.kotlin.gradle.plugin)
+    api(libs.kotlin.serialization.gradle.plugin)
     api(libs.maven.publish.gradle.plugin)
     api(libs.compose.gradle.plugin)
     api(libs.compose.compiler.gradle.plugin)

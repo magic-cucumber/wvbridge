@@ -7,6 +7,5 @@ package top.kagg886.wvbridge.js.internal
  * ================================================
  */
 
-internal const val JavaScriptBridgeResultPrefix: String = "__wvbridge_result_v1__:"
-internal const val JavaScriptBridgePacketPrefix: String = "__wvbridge_packet_v1__:"
+internal const val JavaScriptBridgeValueHeader: String = "wvbridge-js-value-v1"
 internal const val JavaScriptBridgePacketHeader: String = "wvbridge-js-packet-v1"

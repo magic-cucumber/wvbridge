@@ -4,17 +4,20 @@ agp = "8.13.2"
 maven-publish = "0.34.0"
 compose = "1.10.3"
 coroutines = "1.10.2"
+serialization = "1.9.0"
 dokka-gradle-plugin-version = "2.2.0"
 androidx-webkit = "1.14.0"
 [libraries]
 dokka-gradle-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "dokka-gradle-plugin-version" }
 foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlin-serialization-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 maven-publish-gradle-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "maven-publish" }
 compose-gradle-plugin = { module = "org.jetbrains.compose:compose-gradle-plugin", version.ref = "compose" }
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "androidx-webkit" }

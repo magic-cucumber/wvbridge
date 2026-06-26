@@ -2,10 +2,9 @@ package top.kagg886.wvbridge.js
 
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
-import top.kagg886.wvbridge.js.internal.JavaScriptBridgePacketHeader
-import top.kagg886.wvbridge.js.internal.JavaScriptBridgePostMessageTemplate
-import top.kagg886.wvbridge.js.internal.javaScriptBridgeEvaluateScriptTemplate
-import top.kagg886.wvbridge.js.internal.javaScriptBridgePostMessageDispatchTemplate
+import top.kagg886.wvbridge.js.internal.WebViewBridgeExtInstallScript
+import top.kagg886.wvbridge.js.internal.base64Encode
+import top.kagg886.wvbridge.js.internal.iife
 import top.kagg886.wvbridge.js.protocol.JSPacket
 import top.kagg886.wvbridge.js.protocol.JSValue
 
@@ -18,8 +17,29 @@ import top.kagg886.wvbridge.js.protocol.JSValue
  * callers must use `return` to produce a value.
  */
 public suspend fun JavaScriptBridge.evaluateScriptValue(script: String): JSValue {
+    ensureJavaScriptBridgePostMessageInstalled()
+
+    val script = iife(
+        script = """
+            const bridge = window.__wvbridge__;
+
+            try {
+                const script = bridge.decodeBase64("${script.base64Encode()}");
+                return bridge.wrapWire(
+                    bridge.valueHeader,
+                    bridge.toJSValueObject(Function(script).apply(globalThis))
+                );
+            } catch (error) {
+                return bridge.wrapWire(
+                    bridge.valueHeader,
+                    bridge.toErrorValueObject(error)
+                );
+            }
+        """.trimIndent()
+    )
+
     return with(JSValue) {
-        evaluateScript(javaScriptBridgeEvaluateScriptTemplate(script)).toJavaScriptBridgeValue()
+        evaluateScript(script).toJavaScriptBridgeValue()
     }
 }
 
@@ -28,8 +48,8 @@ public suspend fun JavaScriptBridge.evaluateScriptValue(script: String): JSValue
  *
  * On first use this installs the bridge post-message bootstrap script into the document-start hook
  * list and evaluates it in the current page, then delegates to [JavaScriptBridge.registerWebMessageHandler]
- * to receive raw WebView messages. Incoming messages that cannot be decoded as [JSPacket], whose header
- * is not the JavaScript bridge header, or whose packet type differs from [type] are ignored.
+ * to receive raw WebView messages. Incoming messages that cannot be decoded as [JSPacket] or whose
+ * packet type differs from [type] are ignored.
  *
  * The returned [CloseHandle] unregisters the underlying raw WebView message handler.
  *
@@ -46,7 +66,7 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
             }
         }.getOrNull() ?: return@registerWebMessageHandler
 
-        if (packet.header != JavaScriptBridgePacketHeader || packet.type != type) {
+        if (packet.type != type) {
             return@registerWebMessageHandler
         }
 
@@ -75,12 +95,37 @@ public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
     }
 
     ensureJavaScriptBridgePostMessageInstalled()
-    evaluateScript(javaScriptBridgePostMessageDispatchTemplate(type, value))
+
+    val valueExpression = when (value) {
+        JSValue.Undefined -> "undefined"
+        JSValue.Null -> "null"
+        is JSValue.Serializable -> value.value.toString().base64Encode().let {
+            "JSON.parse(window.__wvbridge__.decodeBase64(\"$it\"))"
+        }
+
+        is JSValue.ScriptObject, is JSValue.Error -> throw IllegalArgumentException("JavaScriptBridge.postMessage only supports JSValue.Undefined, JSValue.Null, and JSValue.Serializable")
+    }
+
+    val script = """
+        (() => {
+            window.wvbridge.dispatchEvent(
+                window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
+                $valueExpression
+            );
+        })()
+    """.trimIndent()
+
+
+    evaluateScript(script)
 }
 
 private suspend fun JavaScriptBridge.ensureJavaScriptBridgePostMessageInstalled() {
-    if (with(evaluateScriptValue("return window.__wvbridge_jsbridge_initialized__")) { this !is JSValue.ScriptObject || this.type != "boolean" || !this.value.toBooleanStrict() }) {
-        registerDocumentStartHook(JavaScriptBridgePostMessageTemplate)
-        evaluateScript(JavaScriptBridgePostMessageTemplate)
+    val installed = evaluateScript("window.__wvbridge__ !== undefined")
+        ?.let { it == "true" || it == "\"true\"" }
+        ?: false
+
+    if (!installed) {
+        registerDocumentStartHook(WebViewBridgeExtInstallScript)
+        evaluateScript(WebViewBridgeExtInstallScript)
     }
 }

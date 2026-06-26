@@ -1,52 +1,44 @@
 package top.kagg886.wvbridge.js.protocol
 
-import top.kagg886.wvbridge.js.internal.JavaScriptBridgePacketPrefix
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import top.kagg886.wvbridge.js.internal.JavaScriptBridgePacketHeader
 import top.kagg886.wvbridge.js.internal.base64Decode
 import top.kagg886.wvbridge.js.internal.base64Encode
+import top.kagg886.wvbridge.js.protocol.JSValue.Companion.JsonCodec
 
+@Serializable
 internal data class JSPacket(
-    val header: String,
     val type: String,
     val message: JSValue,
 ) {
-    public companion object {
+    internal companion object {
         internal fun String.toJSPacket(): JSPacket {
-            val value = removeSurrounding("\"")
-            if (!value.startsWith(JavaScriptBridgePacketPrefix)) {
+            val value = unwrapWebViewStringLiteral()
+            val separator = value.indexOf(':')
+            if (separator < 0) {
                 error("decode failed, packet is $this")
             }
 
-            val payload = value.removePrefix(JavaScriptBridgePacketPrefix)
-            val headerSeparator = payload.indexOf(':')
-            if (headerSeparator < 0) {
+            val header = value.substring(0, separator)
+            if (header != JavaScriptBridgePacketHeader) {
                 error("decode failed, packet is $this")
             }
 
-            val typeSeparator = payload.indexOf(':', headerSeparator + 1)
-            if (typeSeparator < 0) {
-                error("decode failed, packet is $this")
-            }
-
-            val header = payload.substring(0, headerSeparator).base64Decode()
-            val type = payload.substring(headerSeparator + 1, typeSeparator).base64Decode()
-            val message = with(JSValue) {
-                payload.substring(typeSeparator + 1).toJavaScriptBridgeValue()
-            }
-
-            return JSPacket(
-                header = header,
-                type = type,
-                message = message,
-            )
+            val json = value.substring(separator + 1).base64Decode()
+            return JsonCodec.decodeFromString(json)
         }
 
-        internal fun JSPacket.toJavaScriptBridgeString(): String = with(JSValue) {
-            JavaScriptBridgePacketPrefix +
-                header.base64Encode() +
-                ":" +
-                type.base64Encode() +
-                ":" +
-                message.toJavaScriptBridgeString()
+        internal fun JSPacket.toJavaScriptBridgeString(): String {
+            return JavaScriptBridgePacketHeader + ":" + JsonCodec.encodeToString(this).base64Encode()
+        }
+
+        private fun String.unwrapWebViewStringLiteral(): String {
+            return runCatching {
+                JsonCodec.decodeFromString<String>(this)
+            }.getOrElse {
+                this
+            }
         }
     }
 }

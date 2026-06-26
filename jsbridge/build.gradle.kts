@@ -2,6 +2,7 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.android.kotlin.multiplatform.library")
     id("com.vanniktech.maven.publish")
 
@@ -15,6 +16,7 @@ library {
     sourceSets {
         commonMain.dependencies {
             api(project(":core"))
+            api(libs.kotlinx.serialization.json)
         }
 
         commonTest.dependencies {
