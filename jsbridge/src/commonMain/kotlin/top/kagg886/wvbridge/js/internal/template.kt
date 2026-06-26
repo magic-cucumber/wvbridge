@@ -15,7 +15,7 @@ package top.kagg886.wvbridge.js.internal
  * | Method | Purpose | Parameters | Return value |
  * |--------|---------|------------|--------------|
  * | `postMessage(type, message = {})` | Sends a typed packet from JavaScript to native code. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandler(type)`. | `type`: packet type, converted with `String(type)`. `message`: payload, default `{}`. The value is normalized to a `JSValue` shape before being sent. | `undefined`. Throws when no native postMessage transport is available. |
- * | `addEventListener(type, listener)` | Registers a JavaScript listener for messages dispatched from native code with `JavaScriptBridge.postMessage(type, value)`. | `type`: event type, converted with `String(type)`. `listener`: function called as `listener.call(window.wvbridge, type, ...args)`. | `undefined`. Throws `TypeError` if `listener` is not a function. |
+ * | `addEventListener(type, listener)` | Registers a JavaScript listener for messages dispatched from native code with `JavaScriptBridge.postMessage(type, value)`. | `type`: event type, converted with `String(type)`. `listener`: function called as `listener.call(window.wvbridge, ...args)`. | `undefined`. Throws `TypeError` if `listener` is not a function. |
  * | `removeEventListener(type, listener)` | Removes a previously registered listener for the given type. | `type`: event type. `listener`: the same function reference passed to `addEventListener`. | `undefined`. Missing listeners are ignored. |
  * | `dispatchEvent(type, ...args)` | Dispatches an event to JavaScript listeners registered for `type`. It is mainly called by native-side `JavaScriptBridge.postMessage`. | `type`: event type. `args`: values delivered to listeners. If no args are provided, listeners receive one `undefined` argument. | `true` when listeners existed and were called, otherwise `false`. |
  *
@@ -258,7 +258,7 @@ internal val WebViewBridgeExtInstallScript: String = iife(
             const parameters = args.length === 0 ? [undefined] : args;
 
             for (const listener of Array.from(listeners)) {
-                listener.call(wvbridge, String(type), ...parameters);
+                listener.call(wvbridge, ...parameters);
             }
 
             return true;

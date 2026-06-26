@@ -87,7 +87,7 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
  *
  * On first use this installs the bridge post-message bootstrap script into the document-start hook
  * list and evaluates it in the current page. [value] is then delivered to listeners as
- * `listener(type, value)` by calling `window.wvbridge.dispatchEvent(type, value)`.
+ * `listener(value)` by calling `window.wvbridge.dispatchEvent(type, value)`.
  *
  * Only [JSValue.Undefined], [JSValue.Null], and [JSValue.Serializable] can be sent because the
  * page-side value must be representable as `undefined`, `null`, or JSON.
@@ -129,7 +129,7 @@ public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
  * JavaScript callback after [args]. The page must register its listener with
  * `window.wvbridge.addEventListener(type, listener)` before native code calls this API; otherwise
  * the dispatch has no listener to invoke and the call will wait until [timeout]. The JavaScript
- * listener receives `listenerType, ...args, reply` and should call `reply(result)` once.
+ * listener receives `...args, reply` and should call `reply(result)` once.
  *
  * The returned value is the callback argument normalized as [JSValue]. Only [JSValue.Undefined],
  * [JSValue.Null], and [JSValue.Serializable] can be used as outgoing [args] because they must be

@@ -95,15 +95,15 @@ Call `closeHandle.close()` when the native handler is no longer needed.
 ### Receive Result From JavaScript
 
 Use `postMessageAndReceiveResult(type, timeout, args...)` when native code needs to call a
-JavaScript listener and wait for one callback result. The listener receives the event type, the
-arguments passed from Kotlin, and a reply callback as the last argument.
+JavaScript listener and wait for one callback result. The listener receives the arguments passed
+from Kotlin, and a reply callback as the last argument.
 
 Register the JavaScript listener before calling the Kotlin API. If Kotlin dispatches the message
 before the page listener exists, no JavaScript callback is invoked and the call waits until timeout.
 On the page side, call the reply callback exactly once with the value you want Kotlin to receive:
 
 ```javascript
-window.wvbridge.addEventListener("profile:load", async (_type, payload, reply) => {
+window.wvbridge.addEventListener("profile:load", async (payload, reply) => {
     const response = await fetch(`/api/profile/${encodeURIComponent(payload.userId)}`);
     reply(await response.json());
 });

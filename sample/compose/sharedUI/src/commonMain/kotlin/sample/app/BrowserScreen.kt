@@ -541,7 +541,7 @@ private val JavaScriptBridgeTestListenersScript = """
     if (!window.__wvbridgeSampleListenersInstalled) {
         window.__wvbridgeSampleListenersInstalled = true;
 
-        window.wvbridge.addEventListener("$NativeNotifyMessageType", (_type, payload) => {
+        window.wvbridge.addEventListener("$NativeNotifyMessageType", (payload) => {
             console.log("wvbridge native notify", payload);
             const id = "wvbridge-native-notify-log";
             let div = document.getElementById(id);
@@ -565,7 +565,7 @@ private val JavaScriptBridgeTestListenersScript = """
             div.textContent = "Native message: " + JSON.stringify(payload);
         });
 
-        window.wvbridge.addEventListener("$NativeRequestMessageType", (_type, payload, reply) => {
+        window.wvbridge.addEventListener("$NativeRequestMessageType", (payload, reply) => {
             reply({
                 title: document.title,
                 href: location.href,
