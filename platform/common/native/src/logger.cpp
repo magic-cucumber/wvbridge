@@ -205,7 +205,15 @@ void logger_loop() {
         post_logger_to_jvm(env, message);
     }
 
-    if (attached) {
+    // During VM/library shutdown, DetachCurrentThread can block behind the
+    // VM_Exit safepoint while the VM thread is waiting for this logger thread
+    // to join. Let the process teardown reclaim the daemon attachment instead.
+    bool should_detach = true;
+    {
+        std::lock_guard<std::mutex> lock(g_logger_queue_mutex);
+        should_detach = !g_logger_shutdown;
+    }
+    if (attached && should_detach) {
         JavaVM* vm = java_runtime_get_vm();
         if (vm != nullptr) {
             vm->DetachCurrentThread();
