@@ -85,6 +85,15 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
                     completion->set_value(Result{true, true, "null", ""});
                     return;
                 }
+                if (jsc_value_is_boolean(value)) {
+                    const bool booleanValue = jsc_value_to_boolean(value);
+                    std::string output = booleanValue ? "true" : "false";
+                    g_object_unref(value);
+
+                    LOGGER_V("evaluateScript: async callback boolean result=%s", output.c_str());
+                    completion->set_value(Result{true, true, output, ""});
+                    return;
+                }
 
                 gchar *stringValue = value ? jsc_value_to_string(value) : nullptr;
                 std::string output = stringValue ? stringValue : "";

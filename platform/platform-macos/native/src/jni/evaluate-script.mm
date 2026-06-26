@@ -1,6 +1,7 @@
 #import "javascript-helpers.h"
 
 #include <cstring>
+#import <CoreFoundation/CoreFoundation.h>
 
 API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
     LOGGER_I("evaluateScript: handle=%lld", (long long) handle);
@@ -65,7 +66,13 @@ API_EXPORT(jstring, evaluateScript, jlong handle, jstring script) {
         return nullptr;
     }
 
-    NSString *stringValue = [result isKindOfClass:[NSString class]] ? (NSString *) result : [result description];
+    NSString *stringValue;
+    if (result == (id) kCFBooleanTrue || result == (id) kCFBooleanFalse) {
+        stringValue = [result boolValue] ? @"true" : @"false";
+        LOGGER_V("evaluateScript: normalized CFBoolean result=%s", [stringValue UTF8String]);
+    } else {
+        stringValue = [result isKindOfClass:[NSString class]] ? (NSString *) result : [result description];
+    }
     const char *chars = [stringValue UTF8String];
     jstring output = env->NewStringUTF(chars ? chars : "");
     [result release];
