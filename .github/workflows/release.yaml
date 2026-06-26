@@ -132,6 +132,7 @@ jobs:
             echo "LIB_CORE_VERSION is not set in gradle.properties" >&2
             exit 1
           fi
+          version="${version#v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Publish
