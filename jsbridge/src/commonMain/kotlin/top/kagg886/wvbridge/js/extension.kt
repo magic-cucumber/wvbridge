@@ -86,29 +86,32 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
  * `window.wvbridge.addEventListener(type, listener)`.
  *
  * On first use this installs the bridge post-message bootstrap script into the document-start hook
- * list and evaluates it in the current page. [value] is then delivered to listeners as
- * `listener(value)` by calling `window.wvbridge.dispatchEvent(type, value)`.
+ * list and evaluates it in the current page. [values] are then delivered to listeners as
+ * `listener(...values)` by calling `window.wvbridge.dispatchEvent(type, ...values)`.
  *
  * Only [JSValue.Undefined], [JSValue.Null], and [JSValue.Serializable] can be sent because the
  * page-side value must be representable as `undefined`, `null`, or JSON.
  *
  * @param type application-level packet type to dispatch.
- * @param value payload delivered to matching JavaScript listeners.
+ * @param values payload values delivered to matching JavaScript listeners.
  */
-public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
-    require(value is JSValue.Undefined || value is JSValue.Null || value is JSValue.Serializable) {
-        "JavaScriptBridge.postMessage only supports JSValue.Undefined, JSValue.Null, and JSValue.Serializable"
-    }
-
+public suspend fun JavaScriptBridge.postMessage(type: String, vararg values: JSValue) {
     ensureJavaScriptBridgePostMessageInstalled()
 
-    val valueExpression = value.toJavaScriptExpression("JavaScriptBridge.postMessage")
+    val arguments = buildList {
+        add("window.__wvbridge__.decodeBase64('${type.base64Encode()}')")
+
+        addAll(
+            elements = values.map { value ->
+                value.toJavaScriptExpression("JavaScriptBridge.postMessage")
+            }
+        )
+    }
 
     val script = iife(
         script = """
             return window.wvbridge.dispatchEvent(
-                window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
-                $valueExpression
+                ${arguments.joinToString(",\n")}
             );
         """.trimIndent()
     )
