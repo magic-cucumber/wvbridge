@@ -92,11 +92,59 @@ window.wvbridge.postMessage("profile:update", {
 
 Call `closeHandle.close()` when the native handler is no longer needed.
 
+### Receive Result From JavaScript
+
+Use `postMessageAndReceiveResult(type, timeout, args...)` when native code needs to call a
+JavaScript listener and wait for one callback result. The listener receives the event type, the
+arguments passed from Kotlin, and a reply callback as the last argument.
+
+Register the JavaScript listener before calling the Kotlin API. If Kotlin dispatches the message
+before the page listener exists, no JavaScript callback is invoked and the call waits until timeout.
+On the page side, call the reply callback exactly once with the value you want Kotlin to receive:
+
+```javascript
+window.wvbridge.addEventListener("profile:load", async (_type, payload, reply) => {
+    const response = await fetch(`/api/profile/${encodeURIComponent(payload.userId)}`);
+    reply(await response.json());
+});
+```
+
+Then call `postMessageAndReceiveResult` from Kotlin. `JSValue.Serializable` stores a
+`JsonElement`; this example passes a `JsonObject`.
+
+```kotlin
+import kotlinx.serialization.json.JsonObject
+import top.kagg886.wvbridge.js.postMessageAndReceiveResult
+import top.kagg886.wvbridge.js.protocol.JSValue
+import kotlin.time.Duration.Companion.seconds
+
+val result = webViewController.bridge.postMessageAndReceiveResult(
+    type = "profile:load",
+    timeout = 5.seconds,
+    JSValue.Serializable(
+        JsonObject(
+            mapOf("userId" to kotlinx.serialization.json.JsonPrimitive("kagg886"))
+        )
+    ),
+)
+
+when (result) {
+    is JSValue.Serializable -> println(result.value)
+    is JSValue.ScriptObject -> println("${result.type}: ${result.value}")
+    is JSValue.Error -> println(result.stacktrace)
+    JSValue.Null -> println("null")
+    JSValue.Undefined -> println("undefined")
+}
+```
+
+If the callback is not called before the timeout, the suspend function throws
+`TimeoutCancellationException` and unregisters its temporary response handler.
+
 ## Result Values
 
 | Value type             | Meaning                                                                  |
 |------------------------|--------------------------------------------------------------------------|
-| `JSValue.Serializable` | A JavaScript value safely serialized with `JSON.stringify`.              |
+| `JSValue.Serializable` | A JavaScript value safely serialized with `JSON.stringify` as `JsonElement`. |
 | `JSValue.ScriptObject` | A value that cannot be represented faithfully as JSON.                   |
 | `JSValue.Error`        | JavaScript evaluation threw an exception.                                |
 | `JSValue.Null`         | JavaScript returned `null`.                                              |

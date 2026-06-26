@@ -1,5 +1,8 @@
 package top.kagg886.wvbridge.js
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.js.internal.WebViewBridgeExtInstallScript
@@ -7,6 +10,9 @@ import top.kagg886.wvbridge.js.internal.base64Encode
 import top.kagg886.wvbridge.js.internal.iife
 import top.kagg886.wvbridge.js.protocol.JSPacket
 import top.kagg886.wvbridge.js.protocol.JSValue
+import kotlin.time.Duration
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 
 /**
@@ -96,25 +102,109 @@ public suspend fun JavaScriptBridge.postMessage(type: String, value: JSValue) {
 
     ensureJavaScriptBridgePostMessageInstalled()
 
-    val valueExpression = when (value) {
-        JSValue.Undefined -> "undefined"
-        JSValue.Null -> "null"
-        is JSValue.Serializable -> value.value.toString().base64Encode().let {
-            "JSON.parse(window.__wvbridge__.decodeBase64(\"$it\"))"
-        }
+    val valueExpression = value.toJavaScriptExpression("JavaScriptBridge.postMessage")
 
-        is JSValue.ScriptObject, is JSValue.Error -> throw IllegalArgumentException("JavaScriptBridge.postMessage only supports JSValue.Undefined, JSValue.Null, and JSValue.Serializable")
+    val script = iife(
+        script = """
+            return window.wvbridge.dispatchEvent(
+                window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
+                $valueExpression
+            );
+        """.trimIndent()
+    )
+
+    val dispatched = evaluateScript(script)
+        .requireJavaScriptBooleanResult("JavaScriptBridge.postMessage")
+    check(dispatched) {
+        "JavaScriptBridge.postMessage failed: no JavaScript listener handled type '$type'"
+    }
+}
+
+
+/**
+ * Dispatches a typed message to JavaScript and suspends until JavaScript returns one result.
+ *
+ * This is the request/response form of [postMessage]. The function installs a temporary native
+ * response handler, dispatches [type] through `window.wvbridge.dispatchEvent`, and appends a
+ * JavaScript callback after [args]. The page must register its listener with
+ * `window.wvbridge.addEventListener(type, listener)` before native code calls this API; otherwise
+ * the dispatch has no listener to invoke and the call will wait until [timeout]. The JavaScript
+ * listener receives `listenerType, ...args, reply` and should call `reply(result)` once.
+ *
+ * The returned value is the callback argument normalized as [JSValue]. Only [JSValue.Undefined],
+ * [JSValue.Null], and [JSValue.Serializable] can be used as outgoing [args] because they must be
+ * representable as `undefined`, `null`, or a [kotlinx.serialization.json.JsonElement] in the page.
+ *
+ * The temporary response handler is always unregistered before this function returns or throws.
+ * If JavaScript does not call the callback before [timeout], this function throws
+ * [kotlinx.coroutines.TimeoutCancellationException].
+ *
+ * @param type application-level packet type to dispatch.
+ * @param timeout maximum time to wait for the JavaScript callback.
+ * @param args payload values delivered to the JavaScript listener before the response callback.
+ * @return the value passed by JavaScript to the response callback.
+ */
+@OptIn(ExperimentalUuidApi::class)
+public suspend fun JavaScriptBridge.postMessageAndReceiveResult(
+    type: String,
+    timeout: Duration,
+    vararg args: JSValue,
+): JSValue = coroutineScope {
+    ensureJavaScriptBridgePostMessageInstalled()
+
+    val deferred = CompletableDeferred<JSValue>()
+    val responseToken = "__wvbridge_result__:${Uuid.random().toHexString()}"
+    val handle = registerWebMessageHandler(responseToken) {
+        deferred.complete(it)
     }
 
-    val script = """
-        window.wvbridge.dispatchEvent(
-            window.__wvbridge__.decodeBase64("${type.base64Encode()}"),
-            $valueExpression
-        );
-    """.trimIndent()
+    try {
+        val arguments = args.map {
+            it.toJavaScriptExpression("JavaScriptBridge.postMessageAndReceiveResult")
+        }
 
+        val script = iife(
+            script = """
+                const type = window.__wvbridge__.decodeBase64("${type.base64Encode()}");
+                const responseType = window.__wvbridge__.decodeBase64("${responseToken.base64Encode()}");
+                return window.wvbridge.dispatchEvent(
+                    type,
+                    ${arguments.joinToString(",\n")},
+                    (result) => window.wvbridge.postMessage(responseType, result)
+                );
+            """.trimIndent()
+        )
 
-    evaluateScript(script)
+        val dispatched = evaluateScript(script)
+            .requireJavaScriptBooleanResult("JavaScriptBridge.postMessageAndReceiveResult")
+        check(dispatched) {
+            "JavaScriptBridge.postMessageAndReceiveResult failed: no JavaScript listener handled type '$type'"
+        }
+
+        withTimeout(timeout) {
+            deferred.await()
+        }
+    } finally {
+        handle.close()
+    }
+}
+
+private fun JSValue.toJavaScriptExpression(apiName: String): String = when (this) {
+    JSValue.Undefined -> "undefined"
+    JSValue.Null -> "null"
+    is JSValue.Serializable -> value.toString().base64Encode().let {
+        "JSON.parse(window.__wvbridge__.decodeBase64(\"$it\"))"
+    }
+
+    is JSValue.ScriptObject, is JSValue.Error -> throw IllegalArgumentException(
+        "$apiName only supports JSValue.Undefined, JSValue.Null, and JSValue.Serializable"
+    )
+}
+
+private fun String?.requireJavaScriptBooleanResult(apiName: String): Boolean = when (this) {
+    "true", "\"true\"" -> true
+    "false", "\"false\"" -> false
+    else -> error("$apiName expected JavaScript to return true or false, but got ${this ?: "null"}")
 }
 
 private suspend fun JavaScriptBridge.ensureJavaScriptBridgePostMessageInstalled() {

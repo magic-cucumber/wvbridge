@@ -5,9 +5,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.serializer
 import kotlinx.serialization.Serializable as KotlinSerializable
 import top.kagg886.wvbridge.js.internal.JavaScriptBridgeValueHeader
 import top.kagg886.wvbridge.js.internal.base64Decode
+import kotlin.reflect.KClass
 
 /**
  * The JavaScript evaluation result normalized across native WebView backends.
@@ -48,7 +52,7 @@ public sealed interface JSValue {
      */
     @KotlinSerializable
     @SerialName("serializable")
-    public data class Serializable(val value: JsonElement) : JSValue
+    public data class Serializable(val value: JsonObject) : JSValue
 
     /**
      * JavaScript evaluation threw an exception.

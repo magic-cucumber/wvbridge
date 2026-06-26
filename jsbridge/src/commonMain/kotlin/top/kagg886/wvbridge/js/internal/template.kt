@@ -1,5 +1,39 @@
 package top.kagg886.wvbridge.js.internal
 
+/**
+ * Installs the JavaScript-side helper used by `wvbridge:jsbridge`.
+ *
+ * The script is wrapped as an IIFE and is idempotent: if `window.__wvbridge__` already exists,
+ * it returns immediately. Installation exposes two global objects:
+ *
+ * - `window.wvbridge`: public page-facing API.
+ * - `window.__wvbridge__`: internal helper object used by Kotlin extension functions and the
+ *   injected script itself. Page code should not depend on it as a stable public API.
+ *
+ * Public injected API on `window.wvbridge`:
+ *
+ * | Method | Purpose | Parameters | Return value |
+ * |--------|---------|------------|--------------|
+ * | `postMessage(type, message = {})` | Sends a typed packet from JavaScript to native code. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandler(type)`. | `type`: packet type, converted with `String(type)`. `message`: payload, default `{}`. The value is normalized to a `JSValue` shape before being sent. | `undefined`. Throws when no native postMessage transport is available. |
+ * | `addEventListener(type, listener)` | Registers a JavaScript listener for messages dispatched from native code with `JavaScriptBridge.postMessage(type, value)`. | `type`: event type, converted with `String(type)`. `listener`: function called as `listener.call(window.wvbridge, type, ...args)`. | `undefined`. Throws `TypeError` if `listener` is not a function. |
+ * | `removeEventListener(type, listener)` | Removes a previously registered listener for the given type. | `type`: event type. `listener`: the same function reference passed to `addEventListener`. | `undefined`. Missing listeners are ignored. |
+ * | `dispatchEvent(type, ...args)` | Dispatches an event to JavaScript listeners registered for `type`. It is mainly called by native-side `JavaScriptBridge.postMessage`. | `type`: event type. `args`: values delivered to listeners. If no args are provided, listeners receive one `undefined` argument. | `true` when listeners existed and were called, otherwise `false`. |
+ *
+ * Internal injected API on `window.__wvbridge__`:
+ *
+ * | Member | Purpose | Parameters | Return value |
+ * |--------|---------|------------|--------------|
+ * | `valueHeader` | Wire header for values returned by `evaluateScriptValue`. | None. | `"wvbridge-js-value-v1"`. |
+ * | `packetHeader` | Wire header for message packets sent from JavaScript to native code. | None. | `"wvbridge-js-packet-v1"`. |
+ * | `encodeBase64(value)` | Encodes a UTF-8 string for transport. | `value`: string. | Base64 string. |
+ * | `decodeBase64(value)` | Decodes a UTF-8 Base64 string. | `value`: Base64 string. | Decoded string. |
+ * | `toErrorValueObject(error)` | Converts a thrown JavaScript error to a `JSValue.Error`-compatible object. | `error`: any thrown value. | `{ kind: "error", stacktrace: string }`. |
+ * | `toJSValueObject(value)` | Normalizes a JavaScript value to the JSON model decoded by Kotlin `JSValue`. | `value`: any JavaScript value. | One of `{ kind: "undefined" }`, `{ kind: "null" }`, `{ kind: "serializable", value }`, or `{ kind: "scriptObject", type, value }`. |
+ * | `wrapWire(header, payload)` | Builds the string wire format used by Kotlin decoders. | `header`: protocol header. `payload`: JSON-serializable object. | `"<header>:<base64(json)>"`. |
+ * | `toPacketWithValue(type, message)` | Builds a packet using an already-normalized `JSValue` object. | `type`: packet type. `message`: normalized `JSValue` object. | Wire string with `packetHeader`. |
+ * | `toPacket(type, message)` | Builds a packet from an arbitrary JavaScript value. | `type`: packet type. `message`: any JavaScript value. | Wire string with `packetHeader`. |
+ * | `postToNative(message)` | Sends a raw wire string through the platform WebView bridge. It tries WebView2, WebKit, then AndroidX WebKit transports. | `message`: raw string to send. | `undefined`. Throws if no supported transport exists. |
+ */
 internal val WebViewBridgeExtInstallScript: String = iife(
     script = """
         if (window.__wvbridge__ !== undefined) return;
@@ -221,10 +255,7 @@ internal val WebViewBridgeExtInstallScript: String = iife(
             const listeners = getMessageListeners(type);
             if (!listeners) return false;
 
-            const parameters = (args.length === 0 ? [undefined] : args).map((value) => isJSValueObject(value)
-                ? fromJSValueObject(value)
-                : value
-            );
+            const parameters = args.length === 0 ? [undefined] : args;
 
             for (const listener of Array.from(listeners)) {
                 listener.call(wvbridge, String(type), ...parameters);

@@ -17,6 +17,7 @@ library {
         commonMain.dependencies {
             api(project(":core"))
             api(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.coroutines.core)
         }
 
         commonTest.dependencies {
