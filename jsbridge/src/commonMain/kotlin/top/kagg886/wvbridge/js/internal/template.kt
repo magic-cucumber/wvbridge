@@ -14,7 +14,7 @@ package top.kagg886.wvbridge.js.internal
  *
  * | Method | Purpose | Parameters | Return value |
  * |--------|---------|------------|--------------|
- * | `postMessage(type, message = {})` | Sends a typed packet from JavaScript to native code. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandler(type)`. | `type`: packet type, converted with `String(type)`. `message`: payload, default `{}`. The value is normalized to a `JSValue` shape before being sent. | `undefined`. Throws when no native postMessage transport is available. |
+ * | `postMessage(type, ...messages)` | Sends a typed packet from JavaScript to native code. Kotlin receives it through `JavaScriptBridge.registerWebMessageHandler(type)`. | `type`: packet type, converted with `String(type)`. `messages`: payload values. Each value is normalized to a `JSValue` shape before being sent. | `undefined`. Throws when no native postMessage transport is available. |
  * | `addEventListener(type, listener)` | Registers a JavaScript listener for messages dispatched from native code with `JavaScriptBridge.postMessage(type, ...values)`. | `type`: event type, converted with `String(type)`. `listener`: function called as `listener.call(window.wvbridge, ...args)`. | `undefined`. Throws `TypeError` if `listener` is not a function. |
  * | `removeEventListener(type, listener)` | Removes a previously registered listener for the given type. | `type`: event type. `listener`: the same function reference passed to `addEventListener`. | `undefined`. Missing listeners are ignored. |
  * | `dispatchEvent(type, ...args)` | Dispatches an event to JavaScript listeners registered for `type`. It is mainly called by native-side `JavaScriptBridge.postMessage`. | `type`: event type. `args`: values delivered to listeners. If no args are provided, listeners receive one `undefined` argument. | `true` when listeners existed and were called, otherwise `false`. |
@@ -30,8 +30,8 @@ package top.kagg886.wvbridge.js.internal
  * | `toErrorValueObject(error)` | Converts a thrown JavaScript error to a `JSValue.Error`-compatible object. | `error`: any thrown value. | `{ kind: "error", stacktrace: string }`. |
  * | `toJSValueObject(value)` | Normalizes a JavaScript value to the JSON model decoded by Kotlin `JSValue`. | `value`: any JavaScript value. | One of `{ kind: "undefined" }`, `{ kind: "null" }`, `{ kind: "serializable", value }`, or `{ kind: "scriptObject", type, value }`. |
  * | `wrapWire(header, payload)` | Builds the string wire format used by Kotlin decoders. | `header`: protocol header. `payload`: JSON-serializable object. | `"<header>:<base64(json)>"`. |
- * | `toPacketWithValue(type, message)` | Builds a packet using an already-normalized `JSValue` object. | `type`: packet type. `message`: normalized `JSValue` object. | Wire string with `packetHeader`. |
- * | `toPacket(type, message)` | Builds a packet from an arbitrary JavaScript value. | `type`: packet type. `message`: any JavaScript value. | Wire string with `packetHeader`. |
+ * | `toPacketWithValues(type, messages)` | Builds a packet using already-normalized `JSValue` objects. | `type`: packet type. `messages`: normalized `JSValue` objects. | Wire string with `packetHeader`. |
+ * | `toPacket(type, messages)` | Builds a packet from arbitrary JavaScript values. | `type`: packet type. `messages`: any JavaScript values. | Wire string with `packetHeader`. |
  * | `postToNative(message)` | Sends a raw wire string through the platform WebView bridge. It tries WebView2, WebKit, then AndroidX WebKit transports. | `message`: raw string to send. | `undefined`. Throws if no supported transport exists. |
  */
 internal val WebViewBridgeExtInstallScript: String = iife(
@@ -191,11 +191,11 @@ internal val WebViewBridgeExtInstallScript: String = iife(
             toErrorValueObject,
             toJSValueObject,
             wrapWire: (header, payload) => header + ":" + encodeBase64(JSON.stringify(payload)),
-            toPacketWithValue: (type, message) => bridge.wrapWire(
+            toPacketWithValues: (type, messages) => bridge.wrapWire(
                 bridge.packetHeader,
-                { type: String(type), message }
+                { type: String(type), messages }
             ),
-            toPacket: (type, message) => bridge.toPacketWithValue(type, toJSValueObject(message)),
+            toPacket: (type, messages) => bridge.toPacketWithValues(type, messages.map(toJSValueObject)),
             postToNative: (message) => {
                 if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
                     window.chrome.webview.postMessage(message);
@@ -228,8 +228,8 @@ internal val WebViewBridgeExtInstallScript: String = iife(
             return listeners;
         };
 
-        wvbridge.postMessage = (type, message = {}) => {
-            bridge.postToNative(bridge.toPacket(type, message));
+        wvbridge.postMessage = (type, ...messages) => {
+            bridge.postToNative(bridge.toPacket(type, messages));
         };
 
         wvbridge.addEventListener = (type, listener) => {

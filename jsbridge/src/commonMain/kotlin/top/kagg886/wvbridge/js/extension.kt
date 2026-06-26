@@ -10,6 +10,7 @@ import top.kagg886.wvbridge.js.internal.base64Encode
 import top.kagg886.wvbridge.js.internal.iife
 import top.kagg886.wvbridge.js.protocol.JSPacket
 import top.kagg886.wvbridge.js.protocol.JSValue
+import top.kagg886.wvbridge.js.protocol.JavaScriptBridgeMessageHandler
 import kotlin.time.Duration
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -60,9 +61,12 @@ public suspend fun JavaScriptBridge.evaluateScriptValue(script: String): JSValue
  * The returned [CloseHandle] unregisters the underlying raw WebView message handler.
  *
  * @param type application-level packet type to accept.
- * @param handle callback invoked with the decoded packet payload.
+ * @param handle callback invoked with the decoded packet payload values.
  */
-public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, handle: (JSValue) -> Unit): CloseHandle {
+public suspend fun JavaScriptBridge.registerWebMessageHandler(
+    type: String,
+    handle: JavaScriptBridgeMessageHandler,
+): CloseHandle {
     ensureJavaScriptBridgePostMessageInstalled()
 
     return registerWebMessageHandler { message ->
@@ -76,7 +80,7 @@ public suspend fun JavaScriptBridge.registerWebMessageHandler(type: String, hand
             return@registerWebMessageHandler
         }
 
-        handle(packet.message)
+        handle.handle(*packet.messages.toTypedArray())
     }
 }
 
@@ -157,8 +161,8 @@ public suspend fun JavaScriptBridge.postMessageAndReceiveResult(
 
     val deferred = CompletableDeferred<JSValue>()
     val responseToken = "__wvbridge_result__:${Uuid.random().toHexString()}"
-    val handle = registerWebMessageHandler(responseToken) {
-        deferred.complete(it)
+    val handle = registerWebMessageHandler(responseToken) { values ->
+        deferred.complete(values.firstOrNull() ?: JSValue.Undefined)
     }
 
     try {

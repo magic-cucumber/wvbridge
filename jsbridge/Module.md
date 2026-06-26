@@ -63,15 +63,15 @@ to produce a value.
 ### Typed Message Bridge
 
 Use `registerWebMessageHandler(type)` to receive typed messages posted from JavaScript. The
-handler only receives packets whose type matches the registered type, and the payload is decoded
-as `JSValue`.
+handler only receives packets whose type matches the registered type, and the payload values are
+decoded as `JSValue`.
 
 ```kotlin
 import top.kagg886.wvbridge.js.registerWebMessageHandler
 import top.kagg886.wvbridge.js.protocol.JSValue
 
-val closeHandle = webViewController.bridge.registerWebMessageHandler("profile:update") { message ->
-    when (message) {
+val closeHandle = webViewController.bridge.registerWebMessageHandler("profile:update") { messages ->
+    for (message in messages) when (message) {
         is JSValue.Serializable -> println(message.value)
         is JSValue.ScriptObject -> println("${message.type}: ${message.value}")
         is JSValue.Error -> println(message.stacktrace)

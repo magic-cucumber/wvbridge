@@ -10,7 +10,7 @@ import top.kagg886.wvbridge.js.protocol.JSValue.Companion.JsonCodec
 @Serializable
 internal data class JSPacket(
     val type: String,
-    val message: JSValue,
+    val messages: List<JSValue>,
 ) {
     internal companion object {
         internal fun String.toJSPacket(): JSPacket {

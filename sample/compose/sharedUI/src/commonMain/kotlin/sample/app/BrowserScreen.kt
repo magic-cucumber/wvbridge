@@ -208,8 +208,9 @@ internal fun BrowserScreen(
                 if (messageBridgeHandle == null) {
                     scope.launch {
                         val result = runCatching {
-                            webViewController.bridge.registerWebMessageHandler(SampleMessageType) { value ->
+                            webViewController.bridge.registerWebMessageHandler(SampleMessageType) { values ->
                                 scope.launch {
+                                    val value = values.firstOrNull() ?: JSValue.Undefined
                                     appendLog("JS message [$SampleMessageType]: ${value.formatForDisplay()}")
                                     if (value is JSValue.ScriptObject && value.type == "number") {
                                         sendMessageCount += 1
