@@ -16,7 +16,7 @@ import top.kagg886.wvbridge.rememberWebViewController
 @Composable
 fun App() {
     MaterialTheme {
-        var url by remember { mutableStateOf("https://www.baidu.com") }
+        var url by remember { mutableStateOf("about:blank") }
         val webViewController = rememberWebViewController(url)
         val backStack = remember { mutableStateListOf<AppRoute>(AppRoute.Main) }
         fun dismissDialog() {

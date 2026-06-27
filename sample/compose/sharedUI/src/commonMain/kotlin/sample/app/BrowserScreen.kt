@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -415,10 +416,22 @@ internal fun BrowserScreen(
             isDocumentStartHookInstalled = documentStartHook != null,
             isJavaScriptBridgeTestCodeInstalled = jsBridgeTestHandle != null,
         )
-        WebView(
-            controller = webViewController,
-            modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp),
-        )
+        Box(Modifier.fillMaxWidth().weight(1f).padding(top = 10.dp)) {
+            WebView(
+                controller = webViewController,
+                modifier = Modifier.matchParentSize(),
+            )
+
+            FloatingActionButton(
+                onClick = {
+
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+            }
+        }
+
         LogPanel(
             logs = logs,
             onClear = { logs.clear() },
