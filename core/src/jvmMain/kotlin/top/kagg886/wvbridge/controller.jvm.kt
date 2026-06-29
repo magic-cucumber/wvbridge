@@ -57,6 +57,11 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                             LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
                             return
                         }
+                        if (instance.handle == 0L) {
+                            closed = true
+                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: webview handle is null, returning")
+                            return
+                        }
                         closed = true
                         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: unregistering hookId=$hookId")
                         instance.unregisterDocumentStartHook(hookId)
@@ -81,6 +86,11 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler.close: closed=$closed")
                         if (closed) {
                             LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: already closed, returning")
+                            return
+                        }
+                        if (instance.handle == 0L) {
+                            closed = true
+                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: webview handle is null, returning")
                             return
                         }
                         closed = true
