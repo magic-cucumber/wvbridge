@@ -123,10 +123,10 @@ internal fun BrowserScreen(
     DisposableEffect(Unit) {
         val handle = webViewController.interceptor.registerNavigationInterceptor {
             appendLog("registerNavigationInterceptor: handle navigation: $it")
-            if (it.startsWith("https://baidu.com")) {
+            if (it.startsWith("https://www.baidu.com")) {
                 return@registerNavigationInterceptor InterceptorHandler.Result.Redirected("https://www.google.com")
             }
-            if (it.startsWith("https://bing.com")) {
+            if (it.startsWith("https://www.bing.com")) {
                 return@registerNavigationInterceptor InterceptorHandler.Result.Rejected
             }
             InterceptorHandler.Result.Allowed
