@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.util.LoggerReceiver
 
 private const val TAG = "WebViewAndroid"
@@ -44,6 +45,41 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "DisposableEffect: creating WebViewClient")
         val webView = controller.instance.instance
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "shouldOverrideUrlLoading: url=$url")
+                return when (val result = controller._interceptor.handleNavigation(url)) {
+                    InterceptorHandler.Result.Allowed -> {
+                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "shouldOverrideUrlLoading: decision=allow url=$url")
+                        false
+                    }
+
+                    InterceptorHandler.Result.Rejected -> {
+                        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "shouldOverrideUrlLoading: decision=cancel url=$url")
+                        true
+                    }
+
+                    is InterceptorHandler.Result.Redirected -> {
+                        val currentUrl = view?.url.orEmpty()
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.INFO,
+                            TAG,
+                            "shouldOverrideUrlLoading: decision=redirect url=$url current=$currentUrl redirect=${result.url}",
+                        )
+                        if (result.url == currentUrl) {
+                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "shouldOverrideUrlLoading: redirect matches current url, reloading")
+                            view?.reload()
+                        } else {
+                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "shouldOverrideUrlLoading: loading redirect url")
+                            view?.loadUrl(result.url)
+                        }
+                        true
+                    }
+
+                    InterceptorHandler.Result.Ignore -> error("dead code")
+                }
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onPageStarted: url=$url")
                 super.onPageStarted(view, url, favicon)

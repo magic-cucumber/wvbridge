@@ -11,13 +11,18 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import platform.Foundation.NSError
 import platform.Foundation.NSKeyValueChangeNewKey
 import platform.Foundation.NSKeyValueObservingOptionNew
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLRequest
 import platform.Foundation.addObserver
 import platform.Foundation.removeObserver
+import platform.WebKit.WKNavigationAction
+import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
 import platform.darwin.NSObject
 import top.kagg886.wvbridge.internal.WVBKVOObserverProtocolProtocol
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.util.LoggerReceiver
 
 private val TAG = "WebViewIOS"
@@ -38,6 +43,53 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WebView: setting up WKNavigationDelegate")
         val webView = controller.instance.delegate
         val delegate = object : NSObject(), WKNavigationDelegateProtocol {
+            @ObjCSignatureOverride
+            override fun webView(
+                webView: WKWebView,
+                decidePolicyForNavigationAction: WKNavigationAction,
+                decisionHandler: (WKNavigationActionPolicy) -> Unit,
+            ) {
+                val url = decidePolicyForNavigationAction.request.URL?.absoluteString ?: ""
+                LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WKNavigationDelegate: decidePolicyForNavigationAction url=$url")
+                when (val result = controller._interceptor.handleNavigation(url)) {
+                    InterceptorHandler.Result.Allowed -> {
+                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "WKNavigationDelegate: decision=allow url=$url")
+                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyAllow)
+                    }
+
+                    InterceptorHandler.Result.Rejected -> {
+                        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WKNavigationDelegate: decision=cancel url=$url")
+                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
+                    }
+
+
+                    is InterceptorHandler.Result.Redirected -> {
+                        val currentUrl = webView.URL?.absoluteString ?: ""
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.INFO,
+                            TAG,
+                            "WKNavigationDelegate: decision=redirect url=$url current=$currentUrl redirect=${result.url}",
+                        )
+                        decisionHandler(WKNavigationActionPolicy.WKNavigationActionPolicyCancel)
+                        if (result.url == currentUrl) {
+                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WKNavigationDelegate: redirect matches current url, reloading")
+                            webView.reload()
+                        } else {
+                            NSURL.URLWithString(result.url)?.let {
+                                LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WKNavigationDelegate: loading redirect url")
+                                webView.loadRequest(NSURLRequest.requestWithURL(it))
+                            } ?: LoggerReceiver.log(
+                                LoggerReceiver.Level.WARN,
+                                TAG,
+                                "WKNavigationDelegate: redirect url is invalid",
+                            )
+                        }
+                    }
+
+                    else -> error("dead code")
+                }
+            }
+
             @ObjCSignatureOverride
             override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
                 LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "WKNavigationDelegate: didStartProvisionalNavigation")

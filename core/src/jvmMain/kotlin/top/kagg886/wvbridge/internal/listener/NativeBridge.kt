@@ -22,6 +22,7 @@ internal object NativeBridge {
 
     @JvmStatic
     private fun onPageLoadingStartCallback(webview: Long, url: String) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onPageLoadingStartCallback: webview=$webview url=$url")
         findPanel(webview)?.pageLoadingStartListener?.forEach { it.accept(url) }
     }
 
@@ -37,7 +38,15 @@ internal object NativeBridge {
 
     @JvmStatic
     private fun onURLChangeCallback(webview: Long, url: String) {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onURLChangeCallback: webview=$webview url=$url")
         findPanel(webview)?.urlChangeListener?.forEach { it.accept(url) }
+    }
+
+    @JvmStatic
+    private fun onNavigationInterceptorCallback(webview: Long, url: String): String {
+        val result = findPanel(webview)?.navigationInterceptor?.invoke(url) ?: "1"
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onNavigationInterceptorCallback: webview=$webview url=$url result=$result")
+        return result
     }
 
     @JvmStatic
@@ -64,4 +73,6 @@ internal object NativeBridge {
     private fun onNativeLoggerPostedCallback(level: String, tag: String, message: String): Unit = LoggerReceiver.log(
         LoggerReceiver.Level.valueOf(level), tag, message
     )
+
+    private const val TAG = "NativeBridge"
 }

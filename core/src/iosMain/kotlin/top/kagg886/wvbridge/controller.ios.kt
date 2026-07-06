@@ -12,9 +12,11 @@ import platform.WebKit.WKUserScript
 import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
 import platform.darwin.NSObject
-import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.interceptor.Interceptor
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.util.LoggerReceiver
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -23,12 +25,18 @@ internal class AutoClosableWKWebView(public val delegate: WKWebView) : AutoClose
     override fun close() {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "close")
     }
+
     private companion object {
         private const val TAG = "AutoCloseWKWV"
     }
 }
 
-internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewController<AutoClosableWKWebView>(instance) {
+internal class WKWebViewController(instance: AutoClosableWKWebView) :
+    WebViewController<AutoClosableWKWebView>(instance) {
+    internal val _interceptor by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "interceptor: lazy init")
+        WKNavigationInterceptor()
+    }
     internal val _navigator by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKWebViewNavigator")
         WKNavigator(instance.delegate)
@@ -39,9 +47,49 @@ internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewCon
     }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
+    override val interceptor: Interceptor get() = _interceptor
 
     private companion object {
         private const val TAG = "WKVWCtrl"
+    }
+}
+
+internal class WKNavigationInterceptor : Interceptor {
+    private val handlers: MutableMap<Int, MutableSet<InterceptorHandler>> = linkedMapOf()
+
+    override fun registerNavigationInterceptor(
+        index: Int,
+        handler: InterceptorHandler,
+    ): CloseHandle {
+        val priorityHandlers = handlers.getOrPut(index) { mutableSetOf() }
+        check(priorityHandlers.add(handler)) {
+            "Navigation interceptor: [$handler] already registered at index=$index"
+        }
+
+        return object : CloseHandle {
+            private var closed = false
+
+            override fun close() {
+                if (closed) return
+                closed = true
+                handlers[index]?.run {
+                    remove(handler)
+                    if (isEmpty()) handlers.remove(index)
+                }
+            }
+        }
+    }
+
+    internal fun handleNavigation(url: String): InterceptorHandler.Result {
+        handlers.keys.sorted().forEach { index ->
+            handlers[index].orEmpty().forEach { handler ->
+                when (val result = handler.handle(url)) {
+                    InterceptorHandler.Result.Ignore -> Unit
+                    else -> return result
+                }
+            }
+        }
+        return InterceptorHandler.Result.Allowed
     }
 }
 
@@ -62,10 +110,18 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: calling evaluateJavaScript")
             instance.evaluateJavaScript(script) { result, error ->
                 if (error != null) {
-                    LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "evaluateScript: error=${error.localizedDescription}")
+                    LoggerReceiver.log(
+                        LoggerReceiver.Level.WARN,
+                        TAG,
+                        "evaluateScript: error=${error.localizedDescription}"
+                    )
                     continuation.resumeWithException(error.toException())
                 } else {
-                    LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "evaluateScript: success, result=${result?.toString()}")
+                    LoggerReceiver.log(
+                        LoggerReceiver.Level.VERBOSE,
+                        TAG,
+                        "evaluateScript: success, result=${result?.toString()}"
+                    )
                     continuation.resume(result?.toString())
                 }
             }
@@ -85,12 +141,20 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             override fun close() {
                 LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: id=$id")
                 if (closed) {
-                    LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: id=$id, already closed")
+                    LoggerReceiver.log(
+                        LoggerReceiver.Level.WARN,
+                        TAG,
+                        "registerDocumentStartHook.close: id=$id, already closed"
+                    )
                     return
                 }
                 closed = true
                 documentStartHooks.remove(id)
-                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removed id=$id, triggering rebuild")
+                LoggerReceiver.log(
+                    LoggerReceiver.Level.VERBOSE,
+                    TAG,
+                    "registerDocumentStartHook.close: removed id=$id, triggering rebuild"
+                )
                 rebuildDocumentStartUserScripts()
             }
         }
@@ -109,21 +173,41 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             override fun close() {
                 LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler.close: closed=$closed")
                 if (closed) {
-                    LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: already closed, returning")
+                    LoggerReceiver.log(
+                        LoggerReceiver.Level.WARN,
+                        TAG,
+                        "registerWebMessageHandler.close: already closed, returning"
+                    )
                     return
                 }
                 closed = true
-                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: removing handler")
+                LoggerReceiver.log(
+                    LoggerReceiver.Level.VERBOSE,
+                    TAG,
+                    "registerWebMessageHandler.close: removing handler"
+                )
                 webMessageHandlers.remove(handler)
-                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: handler removed")
+                LoggerReceiver.log(
+                    LoggerReceiver.Level.VERBOSE,
+                    TAG,
+                    "registerWebMessageHandler.close: handler removed"
+                )
             }
         }
     }
 
     private fun rebuildDocumentStartUserScripts() {
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "rebuildDocumentStartUserScripts: count=${documentStartHooks.size}")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.INFO,
+            TAG,
+            "rebuildDocumentStartUserScripts: count=${documentStartHooks.size}"
+        )
         instance.configuration.userContentController.removeAllUserScripts()
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "rebuildDocumentStartUserScripts: user scripts removed, re-adding hooks")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.VERBOSE,
+            TAG,
+            "rebuildDocumentStartUserScripts: user scripts removed, re-adding hooks"
+        )
         documentStartHooks.values.forEach(::addDocumentStartUserScript)
     }
 
@@ -134,7 +218,11 @@ internal class WKJavaScriptBridge(private val instance: WKWebView) : JavaScriptB
             injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
             forMainFrameOnly = false,
         )
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addDocumentStartUserScript: WKUserScript created, adding to userContentController")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.VERBOSE,
+            TAG,
+            "addDocumentStartUserScript: WKUserScript created, adding to userContentController"
+        )
         instance.configuration.userContentController.addUserScript(userScript)
     }
 
@@ -179,7 +267,11 @@ internal class WKNavigator(private val instance: WKWebView) : Navigator {
     override fun goForward(): Boolean {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "goForward")
         instance.goForward()
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "goForward: after goForward, canGoForward=${instance.canGoForward()}")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.VERBOSE,
+            TAG,
+            "goForward: after goForward, canGoForward=${instance.canGoForward()}"
+        )
         return instance.canGoForward()
     }
 
@@ -220,7 +312,11 @@ public actual fun rememberWebViewController(url: String): WebViewController<*> {
     }
 
     LaunchedEffect(Unit) {
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: LaunchedEffect launching, setting url=$url")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.INFO,
+            TAG_RWVC,
+            "rememberWebViewController: LaunchedEffect launching, setting url=$url"
+        )
         controller.url = url
         controller.loadingState = LoadingState.Ready
     }

@@ -1,5 +1,7 @@
 package top.kagg886.wvbridge.bridge
 
+import top.kagg886.wvbridge.util.CloseHandle
+
 /**
  * Executes JavaScript against the current page and installs scripts that should run before the
  * page's own JavaScript.
@@ -21,7 +23,7 @@ public interface JavaScriptBridge {
     /**
      * Registers [script] so it runs at document start for future page loads.
      *
-     * The returned [CloseHandle] unregisters this hook. Platforms that cannot remove one native
+     * The returned [top.kagg886.wvbridge.util.CloseHandle] unregisters this hook. Platforms that cannot remove one native
      * script directly emulate removal by maintaining their own hook registry and rebuilding the
      * installed document-start scripts.
      */

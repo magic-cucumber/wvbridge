@@ -106,6 +106,18 @@ webViewController.navigator.refresh()
 webViewController.navigator.stop()
 ```
 
+Navigation URL callbacks can allow, cancel, or redirect top-level navigations:
+
+```kotlin
+val handle = webViewController.interceptor.registerNavigationInterceptor { url ->
+    when {
+        url.startsWith("https://blocked.example") -> InterceptorHandler.Result.Rejected
+        url.startsWith("https://old.example") -> InterceptorHandler.Result.Redirected("https://new.example")
+        else -> InterceptorHandler.Result.Allowed
+    }
+}
+```
+
 More features are documented at [wvbridge.kagg886.top](https://wvbridge.kagg886.top).
 
 ## Features
@@ -117,6 +129,7 @@ Legend: ✅ Implemented; ❌ Not implemented; ⚠️ Implemented with limitation
 | Basic navigation (forward, back, load, stop, refresh) | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | URL listener                                          | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Loading state listener                                | ✅                   | ✅   | ✅           | ✅         | ✅         |
+| Navigation URL interceptor                            | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Synchronous JS execution                              | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Add page script (document-start hook)                 | ✅                   | ✅   | ✅           | ✅         | ✅         |
 | Listen for events sent from native                    | ✅                   | ✅   | ✅           | ✅         | ✅         |

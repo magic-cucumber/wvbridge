@@ -103,6 +103,18 @@ webViewController.navigator.refresh()
 webViewController.navigator.stop()
 ```
 
+可以通过导航 URL 回调来允许、取消或重定向顶层导航：
+
+```kotlin
+val handle = webViewController.interceptor.registerNavigationInterceptor { url ->
+    when {
+        url.startsWith("https://blocked.example") -> InterceptorHandler.Result.Rejected
+        url.startsWith("https://old.example") -> InterceptorHandler.Result.Redirected("https://new.example")
+        else -> InterceptorHandler.Result.Allowed
+    }
+}
+```
+
 更多特性请参考 [wvbridge.kagg886.top](https://wvbridge.kagg886.top)。
 
 ## 特性
@@ -114,6 +126,7 @@ webViewController.navigator.stop()
 | 基本导航（前进、后退、加载、停止、刷新）               | ✅       | ✅   | ✅           | ✅         | ✅         |
 | URL 监听                             | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 加载状态监听                             | ✅       | ✅   | ✅           | ✅         | ✅         |
+| 导航 URL 拦截回调                        | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 同步执行 JS 代码                         | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 添加网页脚本（document-start hook）        | ✅       | ✅   | ✅           | ✅         | ✅         |
 | 监听 native 发送事件                     | ✅       | ✅   | ✅           | ✅         | ✅         |

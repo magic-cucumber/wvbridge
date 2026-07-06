@@ -57,7 +57,8 @@ import top.kagg886.wvbridge.LoadingState
 import top.kagg886.wvbridge.WebView
 import top.kagg886.wvbridge.WebViewController
 import top.kagg886.wvbridge.Navigator
-import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.js.evaluateScriptValue
 import top.kagg886.wvbridge.js.postMessage
 import top.kagg886.wvbridge.js.postMessageAndReceiveResult
@@ -120,12 +121,28 @@ internal fun BrowserScreen(
     }
 
     DisposableEffect(Unit) {
+        val handle = webViewController.interceptor.registerNavigationInterceptor {
+            appendLog("registerNavigationInterceptor: handle navigation: $it")
+            if (it.startsWith("https://baidu.com")) {
+                return@registerNavigationInterceptor InterceptorHandler.Result.Redirected("https://www.google.com")
+            }
+            if (it.startsWith("https://bing.com")) {
+                return@registerNavigationInterceptor InterceptorHandler.Result.Rejected
+            }
+            InterceptorHandler.Result.Allowed
+        }
+        onDispose {
+            handle.close()
+        }
+    }
+
+    DisposableEffect(Unit) {
         val rc = receiver { level, line ->
             println(line)
             if (level >= LoggerReceiver.Level.INFO)
-            scope.launch {
-                appendLog(line.takeWhile { it != '\n' })
-            }
+                scope.launch {
+                    appendLog(line.takeWhile { it != '\n' })
+                }
         }
         LoggerReceiver.register(rc)
         onDispose {
@@ -208,34 +225,38 @@ internal fun BrowserScreen(
                         var hookHandle: CloseHandle? = null
 
                         val result = runCatching {
-                            messageHandle = webViewController.bridge.registerWebMessageHandler(SampleMessageType) { values ->
-                                scope.launch {
-                                    val value = values.firstOrNull() ?: JSValue.Undefined
-                                    appendLog("JS message [$SampleMessageType]: ${value.formatForDisplay()}")
-                                    if (value is JSValue.ScriptObject && value.type == "number") {
-                                        sendMessageCount += 1
+                            messageHandle =
+                                webViewController.bridge.registerWebMessageHandler(SampleMessageType) { values ->
+                                    scope.launch {
+                                        val value = values.firstOrNull() ?: JSValue.Undefined
+                                        appendLog("JS message [$SampleMessageType]: ${value.formatForDisplay()}")
+                                        if (value is JSValue.ScriptObject && value.type == "number") {
+                                            sendMessageCount += 1
+                                        }
                                     }
                                 }
-                            }
 
-                            replyHandle = webViewController.bridge.registerWebMessageHandlerWithReply(NativeReplyMessageType) { values, reply ->
-                                val value = values.firstOrNull() ?: JSValue.Undefined
-                                appendLog("JS result request [$NativeReplyMessageType]: ${value.formatForDisplay()}")
-                                reply(
-                                    JSValue.Serializable(
-                                        JsonObject(
-                                            mapOf(
-                                                "ok" to JsonPrimitive(true),
-                                                "from" to JsonPrimitive("kotlin"),
-                                                "count" to JsonPrimitive(sendMessageCount),
-                                                "received" to JsonPrimitive(value.formatForDisplay()),
+                            replyHandle =
+                                webViewController.bridge.registerWebMessageHandlerWithReply(NativeReplyMessageType) { values, reply ->
+                                    val value = values.firstOrNull() ?: JSValue.Undefined
+                                    appendLog("JS result request [$NativeReplyMessageType]: ${value.formatForDisplay()}")
+                                    reply(
+                                        JSValue.Serializable(
+                                            JsonObject(
+                                                mapOf(
+                                                    "ok" to JsonPrimitive(true),
+                                                    "from" to JsonPrimitive("kotlin"),
+                                                    "count" to JsonPrimitive(sendMessageCount),
+                                                    "received" to JsonPrimitive(value.formatForDisplay()),
+                                                )
                                             )
                                         )
                                     )
-                                )
-                            }
+                                }
 
-                            hookHandle = webViewController.bridge.registerDocumentStartHook(JavaScriptBridgeTestListenersInstallScript)
+                            hookHandle = webViewController.bridge.registerDocumentStartHook(
+                                JavaScriptBridgeTestListenersInstallScript
+                            )
                             webViewController.bridge.evaluateScript(JavaScriptBridgeTestListenersInstallScript)
                         }
                         result.onSuccess {

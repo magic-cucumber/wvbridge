@@ -14,6 +14,7 @@ add_library(wvbridge_platform_common OBJECT
         src/page-loading-start-listener.cpp
         src/page-loading-progress-listener.cpp
         src/page-loading-end-listener.cpp
+        src/navigation-interceptor-listener.cpp
         src/url-change-listener.cpp
         src/can-go-back-change-listener.cpp
         src/can-go-forward-change-listener.cpp

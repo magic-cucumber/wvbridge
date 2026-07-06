@@ -16,9 +16,11 @@ import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.interceptor.Interceptor
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.util.LoggerReceiver
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -29,12 +31,19 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
     override fun close() {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close")
     }
+
     internal companion object {
         private const val TAG = "AutoClosableWebView"
     }
 }
 
-internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
+internal class AndroidWebViewController(delegate: AutoClosableWebView) :
+    WebViewController<AutoClosableWebView>(delegate) {
+    internal val _interceptor by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "interceptor: lazy init")
+        AndroidNavigationInterceptor()
+    }
+
     internal val _navigator by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: lazy init")
         AndroidNavigator(delegate.instance)
@@ -45,9 +54,49 @@ internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebView
     }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
+    override val interceptor: Interceptor get() = _interceptor
 
     internal companion object {
         private const val TAG = "AndroidWebViewController"
+    }
+}
+
+internal class AndroidNavigationInterceptor : Interceptor {
+    private val handlers: MutableMap<Int, MutableSet<InterceptorHandler>> = linkedMapOf()
+
+    override fun registerNavigationInterceptor(
+        index: Int,
+        handler: InterceptorHandler,
+    ): CloseHandle {
+        val priorityHandlers = handlers.getOrPut(index) { mutableSetOf() }
+        check(priorityHandlers.add(handler)) {
+            "Navigation interceptor: [$handler] already registered at index=$index"
+        }
+
+        return object : CloseHandle {
+            private var closed = false
+
+            override fun close() {
+                if (closed) return
+                closed = true
+                handlers[index]?.run {
+                    remove(handler)
+                    if (isEmpty()) handlers.remove(index)
+                }
+            }
+        }
+    }
+
+    internal fun handleNavigation(url: String): InterceptorHandler.Result {
+        handlers.keys.sorted().forEach { index ->
+            handlers[index].orEmpty().forEach { handler ->
+                when (val result = handler.handle(url)) {
+                    InterceptorHandler.Result.Ignore -> Unit
+                    else -> return result
+                }
+            }
+        }
+        return InterceptorHandler.Result.Allowed
     }
 }
 
@@ -101,7 +150,11 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
                 runCatching {
                     LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook: on main thread")
                     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                        LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerDocumentStartHook: DOCUMENT_START_SCRIPT not supported")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.ERROR,
+                            TAG,
+                            "registerDocumentStartHook: DOCUMENT_START_SCRIPT not supported"
+                        )
                         throw UnsupportedOperationException("Android WebView document-start script injection is not supported")
                     }
 
@@ -111,16 +164,32 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
                         private var closed = false
 
                         override fun close() {
-                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: closed=$closed")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.INFO,
+                                TAG,
+                                "registerDocumentStartHook.close: closed=$closed"
+                            )
                             if (closed) {
-                                LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
+                                LoggerReceiver.log(
+                                    LoggerReceiver.Level.WARN,
+                                    TAG,
+                                    "registerDocumentStartHook.close: already closed, returning"
+                                )
                                 return
                             }
                             closed = true
-                            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: removing handler")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.VERBOSE,
+                                TAG,
+                                "registerDocumentStartHook.close: removing handler"
+                            )
                             onMainThread {
                                 handler.remove()
-                                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: handler removed")
+                                LoggerReceiver.log(
+                                    LoggerReceiver.Level.VERBOSE,
+                                    TAG,
+                                    "registerDocumentStartHook.close: handler removed"
+                                )
                             }
                         }
                     }
@@ -135,7 +204,11 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
 
     override suspend fun registerWebMessageHandler(handler: WebMessageConsumer): CloseHandle {
         if (!supportWebMessageListener) {
-            LoggerReceiver.log(LoggerReceiver.Level.ERROR, TAG, "registerWebMessageHandler: WEB_MESSAGE_LISTENER not supported")
+            LoggerReceiver.log(
+                LoggerReceiver.Level.ERROR,
+                TAG,
+                "registerWebMessageHandler: WEB_MESSAGE_LISTENER not supported"
+            )
             throw UnsupportedOperationException("Android WebView web-message listener is not supported")
         }
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler: handler=$handler")
@@ -151,16 +224,32 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
                         private var closed = false
 
                         override fun close() {
-                            LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler.close: closed=$closed")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.INFO,
+                                TAG,
+                                "registerWebMessageHandler.close: closed=$closed"
+                            )
                             if (closed) {
-                                LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: already closed, returning")
+                                LoggerReceiver.log(
+                                    LoggerReceiver.Level.WARN,
+                                    TAG,
+                                    "registerWebMessageHandler.close: already closed, returning"
+                                )
                                 return
                             }
                             closed = true
-                            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: removing handler")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.VERBOSE,
+                                TAG,
+                                "registerWebMessageHandler.close: removing handler"
+                            )
                             onMainThread {
                                 webMessageHandlers.remove(handler)
-                                LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: handler removed")
+                                LoggerReceiver.log(
+                                    LoggerReceiver.Level.VERBOSE,
+                                    TAG,
+                                    "registerWebMessageHandler.close: handler removed"
+                                )
                             }
                         }
                     }
@@ -176,7 +265,11 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
     private fun onMainThread(block: () -> Unit) {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "onMainThread")
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: already on main thread, executing directly")
+            LoggerReceiver.log(
+                LoggerReceiver.Level.VERBOSE,
+                TAG,
+                "onMainThread: already on main thread, executing directly"
+            )
             block()
         } else {
             LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "onMainThread: posting to main thread")
@@ -247,10 +340,18 @@ public actual fun rememberWebViewController(url: String): WebViewController<*> {
     }
 
     LaunchedEffect(Unit) {
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, REMEMBER_TAG, "rememberWebViewController: LaunchedEffect url=$url")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.INFO,
+            REMEMBER_TAG,
+            "rememberWebViewController: LaunchedEffect url=$url"
+        )
         controller.url = url
         controller.loadingState = LoadingState.Ready
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: set loadingState=Ready")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.VERBOSE,
+            REMEMBER_TAG,
+            "rememberWebViewController: set loadingState=Ready"
+        )
     }
 
     return controller

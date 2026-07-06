@@ -2,9 +2,11 @@ package top.kagg886.wvbridge
 
 import androidx.compose.runtime.*
 import kotlinx.coroutines.suspendCancellableCoroutine
-import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.interceptor.Interceptor
+import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import top.kagg886.wvbridge.util.LoggerReceiver
 import javax.swing.SwingUtilities
@@ -12,6 +14,11 @@ import kotlin.coroutines.resume
 
 internal class SwingPanelController internal constructor(instance: WebViewBridgePanel) :
     WebViewController<WebViewBridgePanel>(instance) {
+    internal val _interceptor by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "interceptor: lazy init")
+        JvmNavigationInterceptor(instance)
+    }
+
     internal val _navigator by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: lazy init")
         SwingPanelNavigator(instance)
@@ -22,9 +29,57 @@ internal class SwingPanelController internal constructor(instance: WebViewBridge
     }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
+    override val interceptor: Interceptor get() = _interceptor
 
     private companion object {
         private const val TAG = "SwingPanelCtrl"
+    }
+}
+
+internal class JvmNavigationInterceptor(instance: WebViewBridgePanel) : Interceptor {
+    private val handlers: MutableMap<Int, MutableSet<InterceptorHandler>> = linkedMapOf()
+
+    init {
+        instance.navigationInterceptor = {
+            when(val state = handleNavigation(it)) {
+                InterceptorHandler.Result.Allowed -> "1"
+                InterceptorHandler.Result.Rejected -> "2"
+                is InterceptorHandler.Result.Redirected -> "3${state.url}"
+                else -> error("dead code")
+            }
+        }
+    }
+
+    override fun registerNavigationInterceptor(index: Int, handler: InterceptorHandler): CloseHandle {
+        val priorityHandlers = handlers.getOrPut(index) { mutableSetOf() }
+        check(priorityHandlers.add(handler)) {
+            "Navigation interceptor: [$handler] already registered at index=$index"
+        }
+
+        return object : CloseHandle {
+            private var closed = false
+
+            override fun close() {
+                if (closed) return
+                closed = true
+                handlers[index]?.run {
+                    remove(handler)
+                    if (isEmpty()) handlers.remove(index)
+                }
+            }
+        }
+    }
+
+    internal fun handleNavigation(url: String): InterceptorHandler.Result {
+        handlers.keys.sorted().forEach { index ->
+            handlers[index].orEmpty().forEach { handler ->
+                when (val result = handler.handle(url)) {
+                    InterceptorHandler.Result.Ignore -> Unit
+                    else -> return result
+                }
+            }
+        }
+        return InterceptorHandler.Result.Allowed
     }
 }
 

@@ -35,6 +35,117 @@ constexpr float kPhaseStarted = 0.0f;
 constexpr float kPhaseContentLoading = 0.5f;
 constexpr float kPhaseCompleted = 1.0f;
 
+int hex_value(char value) {
+    if (value >= '0' && value <= '9') return value - '0';
+    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+    return -1;
+}
+
+std::string percent_decode(const char* value) {
+    if (value == nullptr) return {};
+    std::string result;
+    for (size_t index = 0; value[index] != '\0'; ++index) {
+        if (value[index] == '%' && value[index + 1] != '\0' && value[index + 2] != '\0') {
+            const int high = hex_value(value[index + 1]);
+            const int low = hex_value(value[index + 2]);
+            if (high >= 0 && low >= 0) {
+                result.push_back(static_cast<char>((high << 4) | low));
+                index += 2;
+                continue;
+            }
+        }
+        result.push_back(value[index] == '+' ? ' ' : value[index]);
+    }
+    return result;
+}
+
+std::wstring utf8_to_wstring(const std::string& value) {
+    if (value.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring result(static_cast<size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, result.data(), size);
+    return result;
+}
+
+std::wstring current_webview_source(WebViewContext* ctx) {
+    if (ctx == nullptr || !ctx->webview) return {};
+    LPWSTR source = nullptr;
+    std::wstring result;
+    if (SUCCEEDED(ctx->webview->get_Source(&source)) && source != nullptr) {
+        result = source;
+        CoTaskMemFree(source);
+    }
+    return result;
+}
+
+std::wstring normalize_url_for_compare(std::wstring value) {
+    while (value.size() > 1 && value.back() == L'/') {
+        value.pop_back();
+    }
+    return value;
+}
+
+bool apply_navigation_interceptor(
+    WebViewContext* ctx,
+    ICoreWebView2NavigationStartingEventArgs* args,
+    const wchar_t* uri
+) {
+    LOGGER_I("apply_navigation_interceptor: ctx=%p uri=%ls", ctx, uri != nullptr ? uri : L"");
+    if (!ctx || !args) {
+        LOGGER_W("apply_navigation_interceptor: missing ctx or navigation args, allowing navigation");
+        return false;
+    }
+
+    char* result = notify_navigation_interceptor_to_jvm(
+        reinterpret_cast<jlong>(ctx),
+        uri != nullptr ? uri : L""
+    );
+    if (result == nullptr) {
+        LOGGER_W("apply_navigation_interceptor: no JVM result, allowing navigation");
+        return false;
+    }
+
+    const char action = result[0];
+    if (action == '2') {
+        LOGGER_I("apply_navigation_interceptor: decision=cancel uri=%ls", uri != nullptr ? uri : L"");
+        args->put_Cancel(TRUE);
+        free_navigation_interceptor_result(result);
+        return true;
+    }
+    if (action == '3') {
+        const std::wstring redirect_url = utf8_to_wstring(percent_decode(result + 1));
+        const std::wstring current_url = current_webview_source(ctx);
+        LOGGER_I(
+            "apply_navigation_interceptor: decision=redirect uri=%ls current=%ls redirect=%ls",
+            uri != nullptr ? uri : L"",
+            current_url.c_str(),
+            redirect_url.c_str()
+        );
+        args->put_Cancel(TRUE);
+        if (!redirect_url.empty() && ctx->webview) {
+            LOGGER_I("apply_navigation_interceptor: notifying JVM url change for redirect=%ls", redirect_url.c_str());
+            notify_url_change_to_jvm(reinterpret_cast<jlong>(ctx), redirect_url.c_str());
+            if (normalize_url_for_compare(redirect_url) == normalize_url_for_compare(current_url)) {
+                LOGGER_I("apply_navigation_interceptor: redirect matches current source, reloading");
+                ctx->webview->Reload();
+            } else {
+                LOGGER_I("apply_navigation_interceptor: navigating to redirect target");
+                ctx->webview->Navigate(redirect_url.c_str());
+            }
+        } else {
+            LOGGER_W("apply_navigation_interceptor: redirect target is empty or webview unavailable");
+        }
+        free_navigation_interceptor_result(result);
+        return true;
+    }
+
+    LOGGER_V("apply_navigation_interceptor: decision=allow uri=%ls result=%s", uri != nullptr ? uri : L"", result);
+    free_navigation_interceptor_result(result);
+    return false;
+}
+
 std::wstring format_failure_reason(ICoreWebView2NavigationCompletedEventArgs* args) {
     LOGGER_V("format_failure_reason");
     COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
@@ -252,9 +363,14 @@ WebViewEvents* webview_events_create(WebViewContext* ctx) {
                 if (!can_notify(ctx)) return S_OK;
                 LPWSTR uri = nullptr;
                 if (args && SUCCEEDED(args->get_Uri(&uri)) && uri) {
+                    if (apply_navigation_interceptor(ctx, args, uri)) {
+                        CoTaskMemFree(uri);
+                        return S_OK;
+                    }
                     notify_page_loading_start_to_jvm(reinterpret_cast<jlong>(ctx), uri);
                     CoTaskMemFree(uri);
                 } else {
+                    if (apply_navigation_interceptor(ctx, args, L"")) return S_OK;
                     notify_page_loading_start_to_jvm(reinterpret_cast<jlong>(ctx), L"");
                 }
                 notify_page_loading_progress_to_jvm(

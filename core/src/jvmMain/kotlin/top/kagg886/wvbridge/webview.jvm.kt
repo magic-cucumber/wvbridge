@@ -23,7 +23,6 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
     DisposableEffect(Unit) {
         val listener: Consumer<String> = {
             controller.loadingState = LoadingState.Loading(0.0f)
-            controller.url = it
         }
 
         controller.instance.addPageLoadingStartListener(listener)

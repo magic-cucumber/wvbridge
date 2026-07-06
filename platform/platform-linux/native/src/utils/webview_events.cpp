@@ -45,6 +45,74 @@ float clamp01(double value) {
     return static_cast<float>(value);
 }
 
+std::string normalize_url_for_compare(const char* value) {
+    std::string result = value != nullptr ? value : "";
+    while (result.size() > 1 && result.back() == '/') {
+        result.pop_back();
+    }
+    return result;
+}
+
+bool apply_navigation_interceptor(WebViewEvents* events, WebKitPolicyDecision* decision, const char* uri) {
+    LOGGER_I(
+        "apply_navigation_interceptor: events=%p webview=%p uri=%s",
+        events,
+        events ? events->webview : nullptr,
+        uri ? uri : ""
+    );
+    if (!events || !events->webview || !decision) {
+        LOGGER_W("apply_navigation_interceptor: missing events/webview/decision, allowing navigation");
+        return false;
+    }
+
+    char* result = notify_navigation_interceptor_to_jvm(events->pointer, uri != nullptr ? uri : "");
+    if (result == nullptr) {
+        LOGGER_W("apply_navigation_interceptor: no JVM result, allowing navigation");
+        return false;
+    }
+
+    const char action = result[0];
+    if (action == '2') {
+        LOGGER_I("apply_navigation_interceptor: decision=cancel uri=%s", uri ? uri : "");
+        webkit_policy_decision_ignore(decision);
+        free_navigation_interceptor_result(result);
+        return true;
+    }
+    if (action == '3') {
+        char* redirect_uri = g_uri_unescape_string(result + 1, nullptr);
+        const char* current_uri = webkit_web_view_get_uri(events->webview);
+        LOGGER_I(
+            "apply_navigation_interceptor: decision=redirect uri=%s current=%s redirect=%s",
+            uri ? uri : "",
+            current_uri ? current_uri : "",
+            redirect_uri ? redirect_uri : ""
+        );
+        webkit_policy_decision_ignore(decision);
+        if (redirect_uri != nullptr && redirect_uri[0] != '\0') {
+            LOGGER_I("apply_navigation_interceptor: notifying JVM url change for redirect=%s", redirect_uri);
+            notify_url_change_to_jvm(events->pointer, redirect_uri);
+
+            const bool same_uri = normalize_url_for_compare(current_uri) == normalize_url_for_compare(redirect_uri);
+            if (same_uri) {
+                LOGGER_I("apply_navigation_interceptor: redirect matches current uri, reloading");
+                webkit_web_view_reload(events->webview);
+            } else {
+                LOGGER_I("apply_navigation_interceptor: loading redirect uri");
+                webkit_web_view_load_uri(events->webview, redirect_uri);
+            }
+        } else {
+            LOGGER_W("apply_navigation_interceptor: redirect uri is empty");
+        }
+        if (redirect_uri != nullptr) g_free(redirect_uri);
+        free_navigation_interceptor_result(result);
+        return true;
+    }
+
+    LOGGER_V("apply_navigation_interceptor: decision=allow uri=%s result=%s", uri ? uri : "", result);
+    free_navigation_interceptor_result(result);
+    return false;
+}
+
 void notify_history(WebViewEvents* events) {
     LOGGER_I("notify_history: pointer=%ld", events ? events->pointer : 0);
     if (!events || !events->webview || is_closing(events)) {
@@ -234,7 +302,11 @@ gboolean decide_policy_cb(
             webkit_navigation_policy_decision_get_navigation_action(navigation_decision);
         if (action) {
             WebKitURIRequest* request = webkit_navigation_action_get_request(action);
-            if (request) webkit_web_view_load_request(webview, request);
+            if (request) {
+                const char* uri = webkit_uri_request_get_uri(request);
+                if (apply_navigation_interceptor(events, decision, uri)) return TRUE;
+                webkit_web_view_load_request(webview, request);
+            }
         }
         webkit_policy_decision_ignore(decision);
         return TRUE;
@@ -242,6 +314,15 @@ gboolean decide_policy_cb(
 
     if (type == WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) {
         LOGGER_V("decide_policy_cb: NAVIGATION_ACTION, using decision");
+        auto* navigation_decision = WEBKIT_NAVIGATION_POLICY_DECISION(decision);
+        WebKitNavigationAction* action =
+            webkit_navigation_policy_decision_get_navigation_action(navigation_decision);
+        if (action) {
+            WebKitURIRequest* request = webkit_navigation_action_get_request(action);
+            if (request && apply_navigation_interceptor(events, decision, webkit_uri_request_get_uri(request))) {
+                return TRUE;
+            }
+        }
         webkit_policy_decision_use(decision);
         return TRUE;
     }

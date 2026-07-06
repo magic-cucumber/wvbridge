@@ -9,7 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import top.kagg886.wvbridge.bridge.CloseHandle
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.js.internal.WebViewBridgeExtInstallScript
 import top.kagg886.wvbridge.js.internal.JavaScriptBridgeReplyTokenPrefix
