@@ -31,13 +31,13 @@ internal class AutoClosableWKWebView(public val delegate: WKWebView) : AutoClose
 internal class WKWebViewController(instance: AutoClosableWKWebView) : WebViewController<AutoClosableWKWebView>(instance) {
     internal val _navigator by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKWebViewNavigator")
-        WKWebViewNavigator(instance.delegate)
+        WKNavigator(instance.delegate)
     }
     internal val _bridge by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKJavaScriptBridge")
         WKJavaScriptBridge(instance.delegate)
     }
-    override val navigator: WebViewNavigator get() = _navigator
+    override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
 
     private companion object {
@@ -163,7 +163,7 @@ private class WKWebMessageDispatcher(
     }
 }
 
-internal class WKWebViewNavigator(private val instance: WKWebView) : WebViewNavigator {
+internal class WKNavigator(private val instance: WKWebView) : Navigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)

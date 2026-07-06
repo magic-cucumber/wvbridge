@@ -6,10 +6,10 @@ package top.kagg886.wvbridge
  * This API covers the basic browser operations exposed by all supported backends: moving backward
  * and forward in history, refreshing, stopping the current load, and loading a new URL.
  *
- * Both [WebViewNavigator.goBack] and [WebViewNavigator.goForward] return a flag describing whether
+ * Both [Navigator.goBack] and [Navigator.goForward] return a flag describing whether
  * another step in the same direction is still available after the jump that was just requested.
  */
-public interface WebViewNavigator {
+public interface Navigator {
     /**
      * Whether the native history stack currently has a previous entry.
      */

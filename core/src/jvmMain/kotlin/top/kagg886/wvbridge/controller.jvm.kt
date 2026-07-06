@@ -20,7 +20,7 @@ internal class SwingPanelController internal constructor(instance: WebViewBridge
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: lazy init")
         SwingPanelJavaScriptBridge(instance)
     }
-    override val navigator: WebViewNavigator get() = _navigator
+    override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
 
     private companion object {
@@ -108,7 +108,7 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
     }
 }
 
-internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : WebViewNavigator {
+internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : Navigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)

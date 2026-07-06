@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.interceptor.Interceptor
 
 /**
  * Common controllers for [WebView].
@@ -62,7 +63,7 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
     /**
      * Imperative navigation controls bound to the same native WebView instance.
      */
-    public abstract val navigator: WebViewNavigator
+    public abstract val navigator: Navigator
 
     /**
      * JavaScript bridge bound to the same native WebView instance.
@@ -71,6 +72,8 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
      * that will run before page scripts on subsequent navigations.
      */
     public abstract val bridge: JavaScriptBridge
+
+    public abstract val interceptor: Interceptor
 }
 
 /**

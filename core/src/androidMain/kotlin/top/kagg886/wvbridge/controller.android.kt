@@ -37,13 +37,13 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
 internal class AndroidWebViewController(delegate: AutoClosableWebView) : WebViewController<AutoClosableWebView>(delegate) {
     internal val _navigator by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "navigator: lazy init")
-        AndroidWebViewNavigator(delegate.instance)
+        AndroidNavigator(delegate.instance)
     }
     internal val _bridge by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: lazy init")
         AndroidJavaScriptBridge(delegate.instance)
     }
-    override val navigator: WebViewNavigator get() = _navigator
+    override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
 
     internal companion object {
@@ -189,7 +189,7 @@ internal class AndroidJavaScriptBridge(private val instance: WebView) : JavaScri
     }
 }
 
-internal class AndroidWebViewNavigator(private val instance: WebView) : WebViewNavigator {
+internal class AndroidNavigator(private val instance: WebView) : Navigator {
     override var canGoBack: Boolean by mutableStateOf(false)
         internal set
     override var canGoForward: Boolean by mutableStateOf(false)

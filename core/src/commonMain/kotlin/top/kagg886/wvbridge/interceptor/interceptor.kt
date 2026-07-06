@@ -9,6 +9,6 @@ import top.kagg886.wvbridge.util.CloseHandle
  * ================================================
  */
 
-public interface WebViewInterceptor {
+public interface Interceptor {
     public fun registerNavigationInterceptor(index: Int = 0, handler: InterceptorHandler): CloseHandle
 }

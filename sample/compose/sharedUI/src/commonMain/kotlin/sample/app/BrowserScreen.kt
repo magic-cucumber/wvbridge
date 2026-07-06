@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -54,14 +51,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.datetime.format
 import kotlinx.datetime.format.DateTimeComponents
-import kotlinx.datetime.format.DateTimeFormat
-import kotlinx.datetime.format.DateTimeFormatBuilder
 import top.kagg886.pmf.ui.component.scroll.VerticalScrollbar
 import top.kagg886.pmf.ui.component.scroll.rememberScrollbarAdapter
 import top.kagg886.wvbridge.LoadingState
 import top.kagg886.wvbridge.WebView
 import top.kagg886.wvbridge.WebViewController
-import top.kagg886.wvbridge.WebViewNavigator
+import top.kagg886.wvbridge.Navigator
 import top.kagg886.wvbridge.bridge.CloseHandle
 import top.kagg886.wvbridge.js.evaluateScriptValue
 import top.kagg886.wvbridge.js.postMessage
@@ -453,7 +448,7 @@ private fun BrowserToolbar(
     onPostMessageAndReceiveResult: () -> Unit,
     onSendMessageFromJavaScript: () -> Unit,
     onCallNativeAndReceiveResultFromJavaScript: () -> Unit,
-    navigator: WebViewNavigator,
+    navigator: Navigator,
     isLoading: Boolean,
     isDocumentStartHookInstalled: Boolean,
     isJavaScriptBridgeTestCodeInstalled: Boolean,
