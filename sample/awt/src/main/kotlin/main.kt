@@ -1,11 +1,22 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
+import top.kagg886.wvbridge.config.WebViewPlatformConfig
+import top.kagg886.wvbridge.config.defaultPlatformConfig
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import top.kagg886.wvbridge.util.LoggerReceiver
 import java.awt.*
+import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.swing.*
+import top.kagg886.wvbridge.config.currentJvmPlatformSetting
+import top.kagg886.wvbridge.config.internal.NativeLinuxWebViewPlatformSetting
+import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewPlatformSetting
+import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewWebsiteDataStore
+import top.kagg886.wvbridge.config.internal.NativeWindowsWebViewPlatformSetting
+import top.kagg886.wvbridge.internal.JvmTarget
+import top.kagg886.wvbridge.internal.jvmTarget
+import kotlin.io.path.absolutePathString
 
 private class BrowserPane(
     private val title: String,
@@ -29,7 +40,27 @@ private class BrowserPane(
     private val refreshButton = createNavButton("⟳")
     private val stopButton = createNavButton("⏹")
 
-    private val webView = WebViewBridgePanel {
+    private val path = File("wvbridge").toPath()
+
+    private val webView = WebViewBridgePanel(
+        when (jvmTarget) {
+            JvmTarget.WINDOWS -> NativeWindowsWebViewPlatformSetting(
+                userAgent = "wvbridge",
+                dataDir = path.absolutePathString()
+            )
+
+            JvmTarget.LINUX -> NativeLinuxWebViewPlatformSetting(
+                userAgent = "wvbridge",
+                dataDir = path.resolve("data").absolutePathString(),
+                cacheDir = path.resolve("cache").absolutePathString(),
+            )
+
+            JvmTarget.MACOS -> NativeMacOSWebViewPlatformSetting(
+                userAgent = "wvbridge",
+                websiteDataStore = NativeMacOSWebViewWebsiteDataStore.DEFAULT
+            )
+        }
+    ) {
         loadUrl(if (urlField.text.isNullOrBlank()) initializeUrl else urlField.text)
     }
 
@@ -38,7 +69,8 @@ private class BrowserPane(
     private var canGoForward = false
     private var isLoading = false
 
-    private fun debug(event: String, value: Any?) = LoggerReceiver.log(LoggerReceiver.Level.DEBUG,"BrowserPane - $event",value.toString())
+    private fun debug(event: String, value: Any?) =
+        LoggerReceiver.log(LoggerReceiver.Level.DEBUG, "BrowserPane - $event", value.toString())
 
     private fun createNavButton(text: String): JButton {
         return JButton(text).apply { preferredSize = navButtonSize }
@@ -198,14 +230,17 @@ private class BrowserPane(
     }
 }
 
-internal fun String.truncate(length: Int) = when(this.length) {
+internal fun String.truncate(length: Int) = when (this.length) {
     in 0..length -> this
     else -> substring(0, length - 3) + "..."
 }
 
 fun main() = SwingUtilities.invokeLater {
     LoggerReceiver.register { level, tag, message ->
-        println("${LocalDateTime.now().format(DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss"))} ${level.toString().padEnd(7)}: [${tag.truncate(16).padEnd(16)}] - $message")
+        val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss"))
+        val level = level.toString().padEnd(7)
+        val tag = tag.truncate(16).padEnd(16)
+        println("$time $level: [$tag] - $message")
     }
     val frame = JFrame("WebView Bridge Panel Demo").apply {
         setSize(1200, 600)
@@ -213,7 +248,8 @@ fun main() = SwingUtilities.invokeLater {
         layout = GridLayout(1, 2, 0, 0)
     }
 
-    val initializeUrl = "https://app-api.pixiv.net/web/v1/login?code_challenge=qM6bcr4aKuf3-F7QdVO96E2JfeyY3cGyEe3Htu9Pr78&code_challenge_method=S256&client=pixiv-android"
+    val initializeUrl =
+        "https://app-api.pixiv.net/web/v1/login?code_challenge=qM6bcr4aKuf3-F7QdVO96E2JfeyY3cGyEe3Htu9Pr78&code_challenge_method=S256&client=pixiv-android"
     val leftPane = BrowserPane("左侧 WebView", initializeUrl)
     val rightPane = BrowserPane("右侧 WebView", initializeUrl, webViewInitiallyActive = false)
 
