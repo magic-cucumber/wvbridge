@@ -42,7 +42,10 @@ import top.kagg886.wvbridge.util.LoggerReceiver
  * - `onPageLoadingProgress` 可能先于 `onPageLoadingStart`。
  * - 一次用户操作（如点击）可能触发多个“start -> progress* -> end”完整周期（跳转 + 重定向）。
  */
-internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() -> Unit) : Canvas(), AutoCloseable {
+internal class WebViewBridgePanel(
+    private val platformSetting: Any,
+    private val initialize: WebViewBridgePanel.() -> Unit
+) : Canvas(), AutoCloseable {
     @Volatile
     internal var handle = 0L
         private set
@@ -187,7 +190,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
         super.addNotify()
 
         SwingUtilities.invokeLater {
-            handle = initAndAttach()
+            handle = initAndAttach(platformSetting)
             LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: initAndAttach handle=$handle")
             NativeBridge.register(this)
             LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: native bridge registered")
@@ -288,7 +291,7 @@ internal class WebViewBridgePanel(private val initialize: WebViewBridgePanel.() 
     }
 
     // --------------init and close--------------
-    private external fun initAndAttach(): Long
+    private external fun initAndAttach(platformSetting: Any): Long
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
     private external fun requestFocus0(webview: Long)
     private external fun close0(webview: Long)

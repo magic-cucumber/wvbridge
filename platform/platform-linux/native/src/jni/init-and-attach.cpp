@@ -1,6 +1,7 @@
 #include "libs_helpers.h"
 #include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
+#include <wvbridge/webview-platform-settings.h>
 
 namespace {
 
@@ -31,8 +32,13 @@ void wvbridge_script_message_received(WebKitUserContentManager *, WebKitJavascri
 
 }
 
-API_EXPORT(jlong, initAndAttach) {
+API_EXPORT(jlong, initAndAttach, jobject platformSetting) {
     LOGGER_I("initAndAttach: entry");
+    WvBridgeLinuxWebViewPlatformSetting setting;
+    if (!parse_webview_platform_settings(env, platformSetting, &setting)) {
+        LOGGER_E("initAndAttach: failed to parse Linux platform setting");
+        return 0;
+    }
 
     if (!wvbridge::gtk_is_inited()) {
         LOGGER_V("initAndAttach: GTK not initialized, calling gtk_init");
@@ -161,7 +167,35 @@ API_EXPORT(jlong, initAndAttach) {
         gtk_widget_add_events(GTK_WIDGET(ctx->window), GDK_BUTTON_PRESS_MASK);
 
         LOGGER_V("initAndAttach: GTK thread - creating WebKit WebView");
-        ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
+        if (!setting.data_dir.empty() || !setting.cache_dir.empty()) {
+            WebKitWebsiteDataManager *data_manager = nullptr;
+            if (!setting.data_dir.empty() && !setting.cache_dir.empty()) {
+                data_manager = webkit_website_data_manager_new(
+                    "base-data-directory", setting.data_dir.c_str(),
+                    "base-cache-directory", setting.cache_dir.c_str(),
+                    nullptr
+                );
+            } else if (!setting.data_dir.empty()) {
+                data_manager = webkit_website_data_manager_new(
+                    "base-data-directory", setting.data_dir.c_str(),
+                    nullptr
+                );
+            } else {
+                data_manager = webkit_website_data_manager_new(
+                    "base-cache-directory", setting.cache_dir.c_str(),
+                    nullptr
+                );
+            }
+            WebKitWebContext *web_context = webkit_web_context_new_with_website_data_manager(data_manager);
+            ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(web_context));
+            g_object_unref(web_context);
+            g_object_unref(data_manager);
+        } else {
+            ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
+        }
+        if (!setting.user_agent.empty()) {
+            webkit_web_view_set_custom_user_agent(ctx->webview, setting.user_agent.c_str());
+        }
         gtk_widget_set_can_focus(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_hexpand(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_vexpand(GTK_WIDGET(ctx->webview), TRUE);

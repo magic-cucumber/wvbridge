@@ -19,6 +19,7 @@ add_library(wvbridge_platform_common OBJECT
         src/can-go-back-change-listener.cpp
         src/can-go-forward-change-listener.cpp
         src/webview-fatal-error-listener.cpp
+        src/webview-platform-settings.cpp
 )
 add_library(wvbridge::platform_common ALIAS wvbridge_platform_common)
 

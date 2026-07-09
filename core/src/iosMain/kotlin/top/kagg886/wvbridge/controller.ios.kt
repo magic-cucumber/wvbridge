@@ -2,6 +2,7 @@ package top.kagg886.wvbridge
 
 import androidx.compose.runtime.*
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
@@ -11,7 +12,11 @@ import platform.WebKit.WKUserContentController
 import platform.WebKit.WKUserScript
 import platform.WebKit.WKUserScriptInjectionTime
 import platform.WebKit.WKWebView
+import platform.WebKit.WKWebViewConfiguration
+import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.WebsiteDataStore
 import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
@@ -300,13 +305,20 @@ internal class WKNavigator(private val instance: WKWebView) : Navigator {
 private val TAG_RWVC = "RememberWVCtrl"
 
 @Composable
-public actual fun rememberWebViewController(url: String): WebViewController<*> {
+public actual fun rememberWebViewController(url: String, config: WebViewConfig): WebViewController<*> {
     LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: url=$url")
-    val controller = remember {
+    val controller = remember(config) {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: creating WKWebView")
-        val wv = WKWebView()
-        wv.configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        wv.configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+        val wkConfig = WKWebViewConfiguration()
+        wkConfig.defaultWebpagePreferences.allowsContentJavaScript = true
+        wkConfig.preferences.javaScriptCanOpenWindowsAutomatically = true
+        wkConfig.websiteDataStore = when (config.platform.websiteDataStore) {
+            WebsiteDataStore.DEFAULT -> WKWebsiteDataStore.defaultDataStore()
+            WebsiteDataStore.NON_PERSISTENT -> WKWebsiteDataStore.nonPersistentDataStore()
+        }
+
+        val wv = WKWebView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), configuration = wkConfig)
+        wv.customUserAgent = config.userAgent
 
         WKWebViewController(AutoClosableWKWebView(wv))
     }

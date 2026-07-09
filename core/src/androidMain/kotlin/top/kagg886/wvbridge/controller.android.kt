@@ -21,6 +21,7 @@ import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.interceptor.Interceptor
 import top.kagg886.wvbridge.interceptor.InterceptorHandler
+import top.kagg886.wvbridge.config.WebViewConfig
 import top.kagg886.wvbridge.util.LoggerReceiver
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -324,18 +325,19 @@ internal class AndroidNavigator(private val instance: WebView) : Navigator {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-public actual fun rememberWebViewController(url: String): WebViewController<*> {
+public actual fun rememberWebViewController(url: String, config: WebViewConfig): WebViewController<*> {
     LoggerReceiver.log(LoggerReceiver.Level.INFO, REMEMBER_TAG, "rememberWebViewController: url=$url")
     val ctx = LocalContext.current
     LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: ctx=$ctx")
 
-    val controller = remember {
+    val controller = remember(config.userAgent) {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, REMEMBER_TAG, "rememberWebViewController: creating WebView")
         val wv = WebView(ctx)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
         wv.settings.javaScriptCanOpenWindowsAutomatically = true
         wv.settings.loadsImagesAutomatically = true
+        wv.settings.userAgentString = config.userAgent
         AndroidWebViewController(AutoClosableWebView(wv))
     }
 

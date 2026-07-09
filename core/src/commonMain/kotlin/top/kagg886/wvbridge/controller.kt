@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.WebViewPlatformConfig
 import top.kagg886.wvbridge.interceptor.Interceptor
 
 /**
@@ -85,7 +87,13 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
  *
  * @param url The initial URL that will be loaded once the native WebView reaches
  *   [LoadingState.Ready].
+ * @param config Configuration applied while creating the native WebView
+ *   instance. The returned controller does not reconfigure an existing native
+ *   WebView if this value changes after creation.
  * @return A remembered [WebViewController] bound to the current composition.
  */
 @Composable
-public expect fun rememberWebViewController(url: String = "about:blank"): WebViewController<*>
+public expect fun rememberWebViewController(
+    url: String = "about:blank",
+    config: WebViewConfig = WebViewConfig()
+): WebViewController<*>

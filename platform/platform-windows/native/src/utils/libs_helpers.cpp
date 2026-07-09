@@ -237,31 +237,6 @@ uint64_t stable_hash(const std::wstring &value) {
     return hash;
 }
 
-std::wstring build_user_data_folder() {
-    LOGGER_V("build_user_data_folder");
-    std::wstring root = query_env_var(L"LOCALAPPDATA");
-    if (root.empty()) {
-        LOGGER_V("build_user_data_folder: LOCALAPPDATA empty, falling back to temp");
-        root = query_temp_directory();
-    }
-    if (root.empty()) {
-        LOGGER_W("build_user_data_folder: no writable root found, returning empty");
-        return L"";
-    }
-
-    const std::wstring process_path = query_process_path();
-    std::filesystem::path process_fs = process_path.empty() ? std::filesystem::path(L"java.exe") : std::filesystem::path(process_path);
-    std::wstring process_name = process_fs.stem().wstring();
-    if (process_name.empty()) {
-        process_name = L"java";
-    }
-
-    std::wostringstream suffix;
-    suffix << std::hex << std::uppercase << stable_hash(process_fs.wstring());
-
-    return (std::filesystem::path(root) / L"wvbridge" / L"WebView2" / (process_name + L"-" + suffix.str())).wstring();
-}
-
 HRESULT ensure_directory_exists(const std::wstring &path, std::string *detail) {
     LOGGER_V("ensure_directory_exists: path=%ls", path.empty() ? L"(empty)" : path.c_str());
     if (path.empty()) {

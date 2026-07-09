@@ -33,7 +33,6 @@ struct InitState {
 
 int clamp_dim(jint v);
 std::string format_hresult(HRESULT hr);
-std::wstring build_user_data_folder();
 HRESULT ensure_directory_exists(const std::wstring &path, std::string *detail);
 std::string build_init_error(
     const char *stage,

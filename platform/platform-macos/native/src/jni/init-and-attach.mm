@@ -1,6 +1,7 @@
 #include "libs_helpers.h"
 #include <wvbridge/javascript.h>
 #include <wvbridge/logger.h>
+#include <wvbridge/webview-platform-settings.h>
 
 namespace {
 
@@ -52,8 +53,14 @@ NSString *string_from_script_message_body(id body) {
 }
 @end
 
-API_EXPORT(jlong, initAndAttach) {
+API_EXPORT(jlong, initAndAttach, jobject platformSetting) {
     LOGGER_I("initAndAttach: entry");
+    WvBridgeMacOSWebViewPlatformSetting setting;
+    if (!parse_webview_platform_settings(env, platformSetting, &setting)) {
+        LOGGER_E("initAndAttach: failed to parse macOS platform setting");
+        return 0;
+    }
+
     // JAWT surface layers
     JAWT awt;
     awt.version = JAWT_VERSION_1_4 | JAWT_MACOSX_USE_CALAYER;
@@ -109,6 +116,9 @@ API_EXPORT(jlong, initAndAttach) {
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
         config.defaultWebpagePreferences.allowsContentJavaScript = YES;
         config.preferences.javaScriptCanOpenWindowsAutomatically = YES;
+        config.websiteDataStore = setting.website_data_store == WvBridgeWebsiteDataStore::NON_PERSISTENT
+            ? [WKWebsiteDataStore nonPersistentDataStore]
+            : [WKWebsiteDataStore defaultDataStore];
         LOGGER_V("initAndAttach: setting up WKScriptMessageHandler");
         ctx->webMessageHandler = [[WVBWebMessageHandler alloc] init];
         ctx->webMessageHandler.context = ctx;
@@ -117,7 +127,9 @@ API_EXPORT(jlong, initAndAttach) {
 
         WKWebView *wv = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0)
                                            configuration:config];
-        wv.customUserAgent = @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15";
+        if (!setting.user_agent.empty()) {
+            wv.customUserAgent = [NSString stringWithUTF8String:setting.user_agent.c_str()];
+        }
         wv.hidden = NO;
         wv.UIDelegate = [[AllowAllUIDelegate alloc] init];
         ctx->webView = wv;

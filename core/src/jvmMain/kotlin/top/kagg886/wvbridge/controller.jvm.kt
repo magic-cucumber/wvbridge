@@ -8,6 +8,8 @@ import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.interceptor.Interceptor
 import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.currentJvmPlatformSetting
 import top.kagg886.wvbridge.util.LoggerReceiver
 import javax.swing.SwingUtilities
 import kotlin.coroutines.resume
@@ -206,13 +208,13 @@ internal class SwingPanelNavigator(private val instance: WebViewBridgePanel) : N
 private const val TAG_RWVC = "RememberWVCtrl"
 
 @Composable
-public actual fun rememberWebViewController(url: String): WebViewController<*> {
+public actual fun rememberWebViewController(url: String, config: WebViewConfig): WebViewController<*> {
     LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: url=$url")
     var initialized by remember { mutableStateOf(false) }
 
-    val controller = remember {
+    val controller = remember(config) {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: creating WebViewBridgePanel")
-        SwingPanelController(instance = WebViewBridgePanel { initialized = true })
+        SwingPanelController(instance = WebViewBridgePanel(config.currentJvmPlatformSetting()) { initialized = true })
     }
 
     LaunchedEffect(initialized) {

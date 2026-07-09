@@ -1,9 +1,16 @@
 #include "libs_helpers.h"
 #include "javascript-helpers.h"
 #include <wvbridge/logger.h>
+#include <wvbridge/webview-platform-settings.h>
 
-API_EXPORT(jlong, initAndAttach) {
+API_EXPORT(jlong, initAndAttach, jobject platformSetting) {
     LOGGER_I("initAndAttach: called");
+    WvBridgeWindowsWebViewPlatformSetting setting;
+    if (!parse_webview_platform_settings(env, platformSetting, &setting)) {
+        LOGGER_E("initAndAttach: failed to parse Windows platform setting");
+        return 0;
+    }
+
     HWND parent_hwnd = nullptr;
 
     JAWT awt{};
@@ -86,7 +93,7 @@ API_EXPORT(jlong, initAndAttach) {
     LOGGER_V("initAndAttach: created context=%p thread=%p", ctx, ctx->thread);
 
     const std::wstring browser_executable_folder;
-    const std::wstring user_data_folder = build_user_data_folder();
+    const std::wstring user_data_folder = utf8_to_wstring(setting.data_dir.c_str());
     std::string user_data_detail;
     HRESULT user_data_hr = ensure_directory_exists(user_data_folder, &user_data_detail);
     if (FAILED(user_data_hr)) {
@@ -108,7 +115,7 @@ API_EXPORT(jlong, initAndAttach) {
     auto future = state->promise.get_future();
 
     LOGGER_V("initAndAttach: dispatching WebView2 init to webview thread");
-    webview2_thread_run_sync(ctx->thread, [ctx, state, browser_executable_folder, user_data_folder] {
+    webview2_thread_run_sync(ctx->thread, [ctx, state, browser_executable_folder, user_data_folder, setting] {
         LOGGER_V("initAndAttach: creating child window via CreateWindowExW");
         ctx->child_hwnd = CreateWindowExW(
             0,
@@ -148,7 +155,7 @@ API_EXPORT(jlong, initAndAttach) {
             user_data_folder.empty() ? nullptr : user_data_folder.c_str(),
             nullptr,
             Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-                [ctx, state, browser_executable_folder, user_data_folder](HRESULT result, ICoreWebView2Environment *created_env) -> HRESULT {
+                [ctx, state, browser_executable_folder, user_data_folder, setting](HRESULT result, ICoreWebView2Environment *created_env) -> HRESULT {
                     if (FAILED(result) || !created_env) {
                         const HRESULT failure = FAILED(result) ? result : E_POINTER;
                         LOGGER_V("initAndAttach: CreateCoreWebView2EnvironmentWithOptions callback failed, hr=0x%lx", (unsigned long)failure);
@@ -170,7 +177,7 @@ API_EXPORT(jlong, initAndAttach) {
                     return created_env->CreateCoreWebView2Controller(
                         ctx->child_hwnd,
                         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                            [ctx, state, browser_executable_folder, user_data_folder](HRESULT result, ICoreWebView2Controller *created_controller) -> HRESULT {
+                            [ctx, state, browser_executable_folder, user_data_folder, setting](HRESULT result, ICoreWebView2Controller *created_controller) -> HRESULT {
                                 if (FAILED(result) || !created_controller) {
                                     const HRESULT failure = FAILED(result) ? result : E_POINTER;
                                     LOGGER_V("initAndAttach: CreateCoreWebView2Controller callback failed, hr=0x%lx", (unsigned long)failure);
@@ -213,6 +220,13 @@ API_EXPORT(jlong, initAndAttach) {
                                     settings->put_IsScriptEnabled(TRUE);
                                     settings->put_AreDefaultScriptDialogsEnabled(TRUE);
                                     settings->put_IsWebMessageEnabled(TRUE);
+                                    if (!setting.user_agent.empty()) {
+                                        ComPtr<ICoreWebView2Settings2> settings2;
+                                        if (SUCCEEDED(settings.As(&settings2)) && settings2) {
+                                            const std::wstring user_agent = utf8_to_wstring(setting.user_agent.c_str());
+                                            settings2->put_UserAgent(user_agent.c_str());
+                                        }
+                                    }
                                     LOGGER_V("initAndAttach: settings configured");
                                 }
 
