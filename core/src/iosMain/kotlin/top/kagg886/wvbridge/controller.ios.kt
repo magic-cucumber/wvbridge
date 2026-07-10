@@ -1,6 +1,7 @@
 package top.kagg886.wvbridge
 
 import androidx.compose.runtime.*
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
@@ -305,6 +306,7 @@ internal class WKNavigator(private val instance: WKWebView) : Navigator {
 private val TAG_RWVC = "RememberWVCtrl"
 
 @Composable
+@OptIn(ExperimentalForeignApi::class)
 public actual fun rememberWebViewController(url: String, config: WebViewConfig): WebViewController<*> {
     LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: url=$url")
     val controller = remember(config) {

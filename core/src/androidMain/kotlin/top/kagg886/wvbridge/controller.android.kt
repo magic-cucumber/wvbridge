@@ -4,26 +4,22 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.webkit.Profile
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.config.WebViewConfig
 import top.kagg886.wvbridge.interceptor.Interceptor
 import top.kagg886.wvbridge.interceptor.InterceptorHandler
-import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.util.LoggerReceiver
 import java.util.concurrent.CopyOnWriteArraySet
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val REMEMBER_TAG = "RememberWebViewController"
 
@@ -31,6 +27,7 @@ private const val REMEMBER_TAG = "RememberWebViewController"
 internal value class AutoClosableWebView(public val instance: WebView) : AutoCloseable {
     override fun close() {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close")
+        instance.destroy()
     }
 
     internal companion object {
@@ -38,7 +35,7 @@ internal value class AutoClosableWebView(public val instance: WebView) : AutoClo
     }
 }
 
-internal class AndroidWebViewController(delegate: AutoClosableWebView) :
+internal class AndroidWebViewController(delegate: AutoClosableWebView, profile: Profile?) :
     WebViewController<AutoClosableWebView>(delegate) {
     internal val _interceptor by lazy {
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "interceptor: lazy init")
@@ -338,7 +335,16 @@ public actual fun rememberWebViewController(url: String, config: WebViewConfig):
         wv.settings.javaScriptCanOpenWindowsAutomatically = true
         wv.settings.loadsImagesAutomatically = true
         wv.settings.userAgentString = config.userAgent
-        AndroidWebViewController(AutoClosableWebView(wv))
+
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) && config.platform.profile != null) {
+            throw UnsupportedOperationException("multi profile is not supported")
+        }
+
+        if (config.platform.profile != null) {
+            WebViewCompat.setProfile(wv, config.platform.profile.name)
+        }
+
+        AndroidWebViewController(AutoClosableWebView(wv), config.platform.profile)
     }
 
     LaunchedEffect(Unit) {

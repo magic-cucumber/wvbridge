@@ -194,7 +194,8 @@ API_EXPORT(jlong, initAndAttach, jobject platformSetting) {
             ctx->webview = WEBKIT_WEB_VIEW(webkit_web_view_new());
         }
         if (!setting.user_agent.empty()) {
-            webkit_web_view_set_custom_user_agent(ctx->webview, setting.user_agent.c_str());
+            WebKitSettings *web_settings = webkit_web_view_get_settings(ctx->webview);
+            webkit_settings_set_user_agent(web_settings, setting.user_agent.c_str());
         }
         gtk_widget_set_can_focus(GTK_WIDGET(ctx->webview), TRUE);
         gtk_widget_set_hexpand(GTK_WIDGET(ctx->webview), TRUE);
