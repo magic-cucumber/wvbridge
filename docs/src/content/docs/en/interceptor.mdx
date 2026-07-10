@@ -1,0 +1,83 @@
+---
+title: Navigation interceptors
+description: Apply ordered allow, reject, and redirect policies before top-level navigation.
+---
+
+## Decide which page opens
+
+Embedded apps often need to route deep links to the host, keep users inside a trusted site, or migrate an old URL. `Interceptor` is a synchronous, cancellable decision chain for **top-level navigation**. It is not a network proxy or offline resource cache.
+
+See the [Interceptor API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.interceptor/-interceptor/index.html) and [InterceptorHandler API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.interceptor/-interceptor-handler/index.html).
+
+## On this page
+
+- [Register a policy](#register-a-policy)
+- [Results and ordering](#results-and-ordering)
+- [What can be intercepted](#what-can-be-intercepted)
+- [Platform mapping](#platform-mapping)
+- [Dispose a policy](#dispose-a-policy)
+
+## Register a policy
+
+```kotlin
+val handle = controller.interceptor.registerNavigationInterceptor { url ->
+    when {
+        url.startsWith("https://docs.example.com/") -> InterceptorHandler.Result.Ignore
+        url.startsWith("myapp://") -> InterceptorHandler.Result.Rejected
+        else -> InterceptorHandler.Result.Ignore
+    }
+}
+```
+
+`Ignore` defers to the next rule; if every rule ignores, navigation is allowed by default. Parse scheme, host, port, and path in production instead of trusting a raw `startsWith` check.
+
+## Results and ordering
+
+Rules run from the smallest `index` upward. The first non-`Ignore` result ends the chain.
+
+```text
+index -100 (security) ── Ignore ──┐
+index    0 (routing)  ── Redirect ─┼──> stop
+index  100 (default) ─────────────┘
+
+all Ignore ─────────────────────────> Allowed
+```
+
+| Result | Meaning | Native outcome |
+| --- | --- | --- |
+| `Ignore` | Continue | No change here; default allow if last. |
+| `Allowed` | End chain | Continue the original URL. |
+| `Rejected` | End chain | Cancel the original URL. |
+| `Redirected(url)` | End chain | Cancel and load `url`; same URL becomes a refresh. |
+
+Handlers are synchronous. Keep them fast and non-blocking; prepare remote policy ahead of time.
+
+## What can be intercepted
+
+| Target | Covered? | Alternative |
+| --- | --- | --- |
+| Top-level URL allow/reject/redirect | Yes | `registerNavigationInterceptor()` |
+| Images, scripts, stylesheets | No | Native resource interception or page code |
+| fetch/XHR bodies | No | Server proxy, JavaScript, or platform networking |
+| Offline resource replacement | No | Custom scheme or native resource loader |
+| Messages from the page | No | [JavaScriptBridge](/en/javascript-interop/) |
+
+`Redirected` changes one top-level address; it does not replace every subresource request.
+
+## Platform mapping
+
+The public semantics are shared, while trigger points come from each host WebView callback: Android `shouldOverrideUrlLoading`, iOS `decidePolicyForNavigationAction`, and the JVM native panel callback. Programmatic `navigator.loadUrl()` is not guaranteed to pass through the interceptor; reuse your policy function when buttons need the same decision.
+
+## Dispose a policy
+
+```kotlin
+DisposableEffect(controller, accountId) {
+    val handle = controller.interceptor.registerNavigationInterceptor { url ->
+        if (url.startsWith("https://account.example.com/")) InterceptorHandler.Result.Allowed
+        else InterceptorHandler.Result.Ignore
+    }
+    onDispose { handle.close() }
+}
+```
+
+`CloseHandle.close()` is idempotent. Register once and close once with the feature lifecycle.

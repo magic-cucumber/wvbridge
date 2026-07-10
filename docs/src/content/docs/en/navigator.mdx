@@ -1,0 +1,84 @@
+---
+title: Navigator
+description: Give embedded pages history, refresh, stop, and URL navigation controls.
+---
+
+## From a content page to a controllable browsing flow
+
+Embedded pages rarely need a full browser, but task flows still need a few browser controls: return after submitting a form, cancel a slow request, or open a help article from an in-app menu. `controller.navigator` is the navigation entry point for the same native WebView owned by the current `WebViewController`.
+
+See the [Navigator Dokka API](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/index.html) for complete signatures.
+
+## On this page
+
+- [Bind capability state to buttons](#bind-capability-state-to-buttons)
+- [Operations at a glance](#operations-at-a-glance)
+- [Navigate, refresh, and retry](#navigate-refresh-and-retry)
+- [Lifecycle and platform behavior](#lifecycle-and-platform-behavior)
+
+## Bind capability state to buttons
+
+`canGoBack` and `canGoForward` are observable Compose state synchronized with the native history. Use them directly for button `enabled` values instead of maintaining a parallel history stack.
+
+```kotlin
+@Composable
+fun ArticleActions(controller: WebViewController<*>) {
+    val navigator = controller.navigator
+    Button(enabled = navigator.canGoBack, onClick = { navigator.goBack() }) { Text("Back") }
+    Button(enabled = navigator.canGoForward, onClick = { navigator.goForward() }) { Text("Forward") }
+}
+```
+
+The return values of `goBack()` and `goForward()` describe whether another step remains *after* the request; normal UI should continue reading the observable state.
+
+:::tip[State follows native history]
+Android reads native capabilities as history and page events change; iOS observes `WKWebView` capabilities; JVM subscribes to its native panel. Do not maintain a second history model.
+:::
+
+## Operations at a glance
+
+| Operation | Typical use | Result and caveat | Dokka |
+| --- | --- | --- | --- |
+| `goBack()` | Return within the page | Requests the previous history entry; return value indicates whether another back step remains. | [`goBack`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/go-back.html) |
+| `goForward()` | Undo a back action | Requests the next history entry. | [`goForward`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/go-forward.html) |
+| `refresh()` | Reload the last successful page | Delegates to the native WebView reload. | [`refresh`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/refresh.html) |
+| `stop()` | Cancel an in-progress load | Stops only when the backend can cancel at that moment. | [`stop`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/stop.html) |
+| `loadUrl(url)` | Open or retry a URL | Starts a new top-level navigation. | [`loadUrl`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/load-url.html) |
+
+## Navigate, refresh, and retry
+
+```kotlin
+Button(onClick = { controller.navigator.loadUrl("https://example.com/help/account") }) {
+    Text("Account help")
+}
+if (controller.loadingState is LoadingState.Loading) {
+    Button(onClick = { controller.navigator.stop() }) { Text("Cancel") }
+}
+```
+
+`refresh()` reloads the most recently **successful** page. To retry a failed address, call `loadUrl(controller.url)` when `LoadingEnd.success` is false.
+
+## Lifecycle and platform behavior
+
+`rememberWebViewController(initialUrl)` triggers the first load after `WebView(controller)` is composed and the native view reaches `Ready`:
+
+```text
+rememberWebViewController(initialUrl)
+              │
+              ▼
+     WebView(controller) enters composition
+              │ native view ready
+              ▼
+      first loadUrl(initialUrl)
+              │
+              ▼
+  Loading ───────────────> LoadingEnd
+              ▲                │
+              └─ loadUrl / refresh / history / redirect ─┘
+```
+
+:::caution[Creating a controller does not create a page]
+Android and iOS become ready quickly; JVM waits for the Swing/AWT host and native peer. Keep navigation controls and `WebView` in the same UI lifecycle and expose preparation/loading through `loadingState`.
+:::
+
+For URL policy before navigation, see [Interceptors](/en/interceptor/). For creation-time options, see [WebViewConfig](/en/configuration/).

@@ -1,0 +1,197 @@
+---
+title: Controller 导读
+description: 用一个可观察、可控制的 WebViewController 将原生 WebView 接入 Compose UI。
+---
+
+当应用内的网页不只是一个静态页面，而是一个带地址栏、前进后退、加载提示和网页通信能力的「浏览器区域」时，UI 需要一个稳定的中心来读取状态、发出操作。`WebViewController` 就是这个中心：它持有同一个原生 WebView 实例对应的状态和能力；Compose 负责根据这些可观察状态重组 UI。
+
+本页介绍如何建立这层控制，而不是把每一个 API 当作孤立按钮来使用。具体参数和全部签名请查阅 [Controller API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-web-view-controller/index.html)。
+
+## 本页导航
+
+- [建立并挂载控制器](#建立并挂载控制器)
+- [控制器包含什么](#控制器包含什么)
+- [用 loadingState 驱动 UI](#用-loadingstate-驱动-ui)
+- [地址栏与导航动作](#地址栏与导航动作)
+- [网页脚本与消息](#网页脚本与消息)
+- [生命周期与资源](#生命周期与资源)
+
+## 建立并挂载控制器
+
+在同一处组合范围内创建并记住控制器，然后把它交给 `WebView`。这让工具栏、加载提示和网页容器共享同一份状态，而不需要向原生视图索取实例。
+
+```kotlin
+@Composable
+fun HelpCenter() {
+    val controller = rememberWebViewController(
+        url = "https://example.com/help",
+        config = WebViewConfig(),
+    )
+
+    Column {
+        BrowserToolbar(controller)
+        WebView(
+            controller = controller,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+```
+
+`rememberWebViewController()` 返回的实例会随当前 Compose composition 保留。创建时传入的 `url` 会在原生视图就绪后作为初始导航地址；`config` 也只在创建原生 WebView 时应用。若 `config` 在之后改变，现有 WebView 不会被重新配置。
+
+:::note[先有容器，才会加载]
+控制器变为 `Ready` 后，`WebView` 组合项会发起初始 `loadUrl(controller.url)`。因此在仅创建 controller、却尚未把 `WebView` 放入 composition 的阶段，不应期待页面已加载。
+:::
+
+有关创建阶段的选项，请见 [配置 WebViewConfig](/zh/webview-config/)；有关 `WebView` 组件本身，请见 [WebView API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-web-view/index.html)。
+
+## 控制器包含什么
+
+| 成员 | 用途 | 适合驱动的 UI |
+| --- | --- | --- |
+| `url` | 最近一次尝试加载的顶层 URL | 地址栏、当前站点显示 |
+| `loadingState` | 原生视图准备与主框架加载状态 | 骨架屏、进度条、错误重试 |
+| `navigator` | 同一实例的命令式导航能力 | 后退、前进、刷新、停止、跳转 |
+| `bridge` | 当前页面的 JavaScript 和消息通道 | 读取页面数据、注入启动脚本、Web 消息 |
+| `interceptor` | 导航决策的注册入口 | 外链转交、登录跳转、深链策略 |
+
+```text
+Compose 工具栏 / 状态栏 ──读取──> controller.url / loadingState
+        │                                  │
+        └──────────操作──> controller.navigator / bridge / interceptor
+                                           │
+                                      同一个原生 WebView
+```
+
+`url` 是「尝试导航到哪里」的记录，而不是「最后成功页面」的保证。它会随重定向、历史跳转和自定义 scheme 的导航尝试更新；即使请求失败，仍保留该尝试 URL。这个差异使地址栏能如实显示用户刚刚输入或点击的地址。
+
+:::tip[不要把 controller 当作可手动构造的状态容器]
+`WebViewController` 的构造器是内部实现细节，应通过 `rememberWebViewController()` 获取。它的 `url` 与 `loadingState` 只读给调用者修改（setter 为 internal），状态由平台回调维护。
+:::
+
+## 用 loadingState 驱动 UI
+
+`LoadingState` 是一个 sealed interface。`Ready` 是「原生视图可以接收首次导航」的屏障，不代表网页已加载完成；首次加载开始后，状态通常在 `Loading` 与 `LoadingEnd` 之间切换。
+
+```text
+                 原生视图完成初始化
+NotReady ───────────────────────────────> Ready
+                                            │
+                                  WebView 发起初始 URL
+                                            │
+                                            v
+                         新导航 / 重定向 / 历史跳转
+                    ┌──────────────────> Loading(progress 0f..1f)
+                    │                         │
+                    │            页面完成或主框架错误
+                    │                         v
+                    └────────────────── LoadingEnd(success, reason)
+```
+
+平台就绪时机并不相同：Android 和 iOS 会在首次 composition 中很快从 `NotReady` 进入 `Ready`；JVM 桌面端必须等待 Swing/AWT 宿主与原生 peer 完成附着，才进入 `Ready`。因此加载占位 UI 应直接观察状态，而不要假定固定延迟。
+
+```kotlin
+when (val state = controller.loadingState) {
+    LoadingState.NotReady -> CircularProgressIndicator()
+    LoadingState.Ready -> Text("正在准备页面…")
+    is LoadingState.Loading -> LinearProgressIndicator(state.progress)
+    is LoadingState.LoadingEnd -> if (!state.success) {
+        RetryBanner(
+            message = state.reason ?: "页面加载失败",
+            onRetry = { controller.navigator.loadUrl(controller.url) },
+        )
+    }
+}
+```
+
+`LoadingEnd(false, reason)` 只表示原生引擎报告了主框架错误；`reason` 是平台相关的可选说明，适合展示为诊断信息而不是依赖其文本做业务分支。完整状态定义见 [LoadingState API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-loading-state/index.html)。
+
+## 地址栏与导航动作
+
+将输入框的提交操作交给 `navigator.loadUrl()`，历史按钮则根据 `canGoBack`、`canGoForward` 显示。不要直接写 `controller.url`：该属性是平台回调与导航尝试的结果。
+
+```kotlin
+@Composable
+fun BrowserToolbar(controller: WebViewController<*>) {
+    Row {
+        IconButton(
+            enabled = controller.navigator.canGoBack,
+            onClick = { controller.navigator.goBack() },
+        ) { Text("←") }
+
+        IconButton(
+            enabled = controller.navigator.canGoForward,
+            onClick = { controller.navigator.goForward() },
+        ) { Text("→") }
+
+        Button(onClick = { controller.navigator.refresh() }) { Text("刷新") }
+        Button(onClick = { controller.navigator.stop() }) { Text("停止") }
+    }
+}
+```
+
+| 操作 | 语义 |
+| --- | --- |
+| `loadUrl(url)` | 开始新的顶层导航；底层引擎支持时可使用自定义 scheme。 |
+| `goBack()` / `goForward()` | 请求历史跳转；返回值表示这次跳转后是否仍可沿同方向继续跳转。 |
+| `refresh()` | 刷新最近一次成功加载的页面。若最新尝试失败，想重试该地址应调用 `loadUrl(controller.url)`。 |
+| `stop()` | 在平台后端支持取消的时机停止当前导航。 |
+
+导航行为、返回值和拦截优先级请分别查看 [Navigator API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-navigator/index.html) 与[导航器](/zh/navigator/)、[拦截器](/zh/interceptor/)。
+
+## 网页脚本与消息
+
+`bridge` 绑定的也是同一个原生 WebView。它适合两类需求：在已经打开的页面中执行脚本，或在后续页面加载的 document start 阶段注册脚本。相关 API 都是 `suspend`，请放在协程环境中调用。
+
+```kotlin
+LaunchedEffect(controller.loadingState) {
+    if (controller.loadingState is LoadingState.LoadingEnd) {
+        val title = controller.bridge.evaluateScript("document.title")
+        // title 是平台返回的字符串表示；按你的页面协议解析。
+    }
+}
+```
+
+```kotlin
+LaunchedEffect(Unit) {
+    val hook = controller.bridge.registerDocumentStartHook(
+        "window.appTheme = 'dark';",
+    )
+    val listener = controller.bridge.registerWebMessageHandler { message ->
+        // 接收网页通过平台原生 postMessage 入口发送的字符串。
+    }
+    try {
+        kotlinx.coroutines.awaitCancellation()
+    } finally {
+        hook.close()
+        listener.close()
+    }
+}
+```
+
+:::caution[消息入口与能力随平台而异]
+WebView2 使用 `window.chrome.webview.postMessage(...)`；WebKit 使用 `window.webkit.messageHandlers.wvbridge.postMessage(...)`；AndroidX WebKit 使用 `window._wvbridge.postMessage(...)`。公共 API 只传递字符串；Android 的文档启动脚本与消息监听还依赖相应的 AndroidX WebKit feature，缺失时可能抛出 `UnsupportedOperationException`。
+:::
+
+进一步的脚本约定、关闭句柄和平台限制见 [JavaScriptBridge API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.bridge/-java-script-bridge/index.html) 与 [JavaScript 互操作性](/zh/javascript-bridge/)。
+
+## 生命周期与资源
+
+控制器通过 `AutoCloseable` 转发关闭行为；当 `WebView` 离开 composition 时，桌面实现会关闭其原生面板。通常只要让 controller 的创建与 `WebView` 的 composition 生命周期一致即可。
+
+对于可撤销注册，务必保存 `registerDocumentStartHook()`、`registerWebMessageHandler()` 和拦截器注册返回的 `CloseHandle`，并在不再需要时调用 `close()`。这会解除对应的 hook 或 handler，避免功能在之后的页面加载中继续生效。
+
+```kotlin
+DisposableEffect(controller) {
+    val handle = controller.interceptor.registerNavigationInterceptor { url ->
+        // 根据业务决定允许、拒绝或重定向。
+        InterceptorHandler.Result.Ignore
+    }
+    onDispose { handle.close() }
+}
+```
+
+:::note[配置变化会重建 controller]
+`rememberWebViewController` 以 `config` 作为 remember key；配置对象变化会创建新的控制器。初始 `url` 本身不是该 key，因此要在现有页面跳转时使用 `navigator.loadUrl()`，而不是期待改变传参自动导航。
+:::

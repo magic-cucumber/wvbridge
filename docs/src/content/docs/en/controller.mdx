@@ -1,0 +1,142 @@
+---
+title: Controller guide
+description: Connect one observable, controllable native WebView to Compose UI.
+---
+
+When an embedded page needs an address display, back/forward controls, loading feedback, or page messaging, the UI needs a stable center for state and actions. `WebViewController` is that center: it represents one native WebView, while Compose renders from its observable state.
+
+See the complete [Controller API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-web-view-controller/index.html) for signatures and parameters.
+
+## On this page
+
+- [Create and mount a controller](#create-and-mount-a-controller)
+- [What the controller contains](#what-the-controller-contains)
+- [Drive UI from `loadingState`](#drive-ui-from-loadingstate)
+- [Address and navigation actions](#address-and-navigation-actions)
+- [Scripts and messages](#scripts-and-messages)
+- [Lifecycle and resources](#lifecycle-and-resources)
+
+## Create and mount a controller
+
+Create and remember the controller in one composition scope, then pass it to `WebView` so toolbars, indicators, and the page share one state source.
+
+```kotlin
+@Composable
+fun HelpCenter() {
+    val controller = rememberWebViewController(
+        url = "https://example.com/help",
+        config = WebViewConfig(),
+    )
+    Column {
+        BrowserToolbar(controller)
+        WebView(controller = controller, modifier = Modifier.fillMaxSize())
+    }
+}
+```
+
+The remembered instance survives recomposition. The initial `url` is loaded after the native view is ready; `config` is applied when that view is created and does not reconfigure an existing view. See [WebViewConfig](/en/configuration/) and the [WebView API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-web-view/index.html).
+
+:::note[The container must exist before loading]
+Initial `loadUrl(controller.url)` is issued when `WebView` enters composition and the controller reaches `Ready`. Creating only a controller does not load the page.
+:::
+
+## What the controller contains
+
+| Member | Purpose | Typical UI |
+| --- | --- | --- |
+| `url` | Most recently attempted top-level URL | Address bar, current-site label |
+| `loadingState` | Native-view readiness and main-frame loading | Skeleton, progress, retry |
+| `navigator` | Imperative navigation for this instance | Back, forward, refresh, stop, load |
+| `bridge` | JavaScript and web-message channel | Read data, startup hooks, messages |
+| `interceptor` | Navigation decision registration | External links, auth redirects, deep links |
+
+```text
+Compose toolbar / status ──reads──> controller.url / loadingState
+          │                                  │
+          └────────actions──> navigator / bridge / interceptor
+                                             │
+                                      one native WebView
+```
+
+`url` records where navigation was attempted, not necessarily the last successful page. It can change for redirects, history moves, custom schemes, and failed requests. Obtain controllers with `rememberWebViewController()`; construction is an implementation detail and its state setters are internal.
+
+## Drive UI from `loadingState`
+
+`LoadingState` is a sealed interface. `Ready` means the native view can accept its first navigation, not that the page is complete. Loads normally move between `Loading` and `LoadingEnd`.
+
+```text
+                 native view initialized
+NotReady ───────────────────────────────> Ready
+                                            │
+                                  WebView starts initial URL
+                                            │
+                                            v
+                         new load / redirect / history move
+                    ┌──────────────────> Loading(progress 0f..1f)
+                    │                         │
+                    │             page done or main-frame error
+                    │                         v
+                    └────────────────── LoadingEnd(success, reason)
+```
+
+Read the state rather than assuming a delay; JVM waits for its Swing/AWT peer while Android and iOS usually become ready during the first composition.
+
+```kotlin
+when (val state = controller.loadingState) {
+    LoadingState.NotReady -> CircularProgressIndicator()
+    LoadingState.Ready -> Text("Preparing page…")
+    is LoadingState.Loading -> LinearProgressIndicator(state.progress)
+    is LoadingState.LoadingEnd -> if (!state.success) {
+        RetryBanner(
+            message = state.reason ?: "Page failed to load",
+            onRetry = { controller.navigator.loadUrl(controller.url) },
+        )
+    }
+}
+```
+
+`LoadingEnd(false, reason)` reports a main-frame error from the native engine. The optional reason is platform-specific diagnostic text; do not branch business logic on its wording. See the [LoadingState API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-loading-state/index.html).
+
+## Address and navigation actions
+
+Submit address-field text with `navigator.loadUrl()` and enable history buttons from `canGoBack` and `canGoForward`; never assign `controller.url` directly.
+
+```kotlin
+IconButton(enabled = controller.navigator.canGoBack,
+    onClick = { controller.navigator.goBack() }) { Text("←") }
+IconButton(enabled = controller.navigator.canGoForward,
+    onClick = { controller.navigator.goForward() }) { Text("→") }
+Button(onClick = { controller.navigator.refresh() }) { Text("Refresh") }
+Button(onClick = { controller.navigator.stop() }) { Text("Stop") }
+```
+
+`loadUrl` starts top-level navigation; `goBack`/`goForward` request history moves; `refresh` reloads the last successful page; `stop` cancels when the backend supports it. For failed retries call `loadUrl(controller.url)`. See [Navigator API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge/-navigator/index.html), [navigator](/en/navigator/), and [interceptor](/en/interceptor/).
+
+## Scripts and messages
+
+The `bridge` belongs to the same native view. Use it to evaluate scripts in the current page or register document-start hooks and web-message handlers. These APIs are `suspend` and should run in a coroutine.
+
+```kotlin
+LaunchedEffect(controller.loadingState) {
+    if (controller.loadingState is LoadingState.LoadingEnd) {
+        val title = controller.bridge.evaluateScript("document.title")
+    }
+}
+```
+
+Keep returned handles and close them when no longer needed. Message entry points differ by platform; Android document-start hooks and listeners require the corresponding AndroidX WebKit feature and may throw `UnsupportedOperationException`. See the [JavaScriptBridge API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.bridge/-java-script-bridge/index.html) and [JavaScript interop](/en/javascript-interop/).
+
+## Lifecycle and resources
+
+The controller forwards closing through `AutoCloseable`; when `WebView` leaves composition, desktop implementations close their native panel. Keep controller and view lifetimes aligned. Close `CloseHandle`s returned by document hooks, message handlers, and interceptor registrations.
+
+```kotlin
+DisposableEffect(controller) {
+    val handle = controller.interceptor.registerNavigationInterceptor { url ->
+        InterceptorHandler.Result.Ignore
+    }
+    onDispose { handle.close() }
+}
+```
+
+`rememberWebViewController` uses `config` as a remember key, so changing configuration creates a new controller. The initial `url` is not that key; navigate an existing page with `navigator.loadUrl()`.

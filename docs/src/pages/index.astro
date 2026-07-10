@@ -1,0 +1,20 @@
+---
+const fallbackDestination = '/en/';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta http-equiv="refresh" content={`0; url=${fallbackDestination}`} />
+		<link rel="canonical" href={fallbackDestination} />
+		<title>Redirecting to wvbridge documentation</title>
+		<script>
+			const destination = navigator.language.toLowerCase().startsWith('zh') ? '/zh/' : '/en/';
+			window.location.replace(destination);
+		</script>
+	</head>
+	<body>
+		<p><a href={fallbackDestination}>Continue to the wvbridge documentation.</a></p>
+	</body>
+</html>

@@ -1,0 +1,77 @@
+---
+title: JavaScript interoperability
+description: Evaluate scripts, inject document-start hooks, and receive string messages from pages.
+---
+
+## When you need a bridge
+
+An embedded page may report its title or completion event to Compose, while the host may read document state or install theme and telemetry code before each page starts. `controller.bridge` is the low-level, platform-native JavaScript channel; it does not impose a message protocol or object model.
+
+For typed values and request/response helpers, see [JavaScript enhancements](/en/jsbridge-utilities/). Full signatures are in the [JavaScriptBridge Dokka API](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/index.html).
+
+## On this page
+
+- [Capabilities and timing](#capabilities-and-timing)
+- [Evaluate the current page](#evaluate-the-current-page)
+- [Page-to-host messages](#page-to-host-messages)
+- [Document-start hooks](#document-start-hooks)
+- [Cleanup and security](#cleanup-and-security)
+
+## Capabilities and timing
+
+| Capability | Use | Lifecycle | Dokka |
+| --- | --- | --- | --- |
+| `evaluateScript(script)` | Evaluate or trigger an action in the current page | `suspend`; returns the engine's string representation | [`evaluateScript`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/evaluate-script.html) |
+| `registerWebMessageHandler(handler)` | Receive page-to-host messages | `suspend`; returns a closable handle | [`registerWebMessageHandler`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/register-web-message-handler.html) |
+| `registerDocumentStartHook(script)` | Inject into later page loads at document start | `suspend`; returns a closable handle | [`registerDocumentStartHook`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/register-document-start-hook.html) |
+
+All three operate on the controller's single native WebView. Observe `loadingState` before DOM work; `Ready` does not mean the first document has finished loading.
+
+## Evaluate the current page
+
+```kotlin
+LaunchedEffect(controller.loadingState) {
+    if (controller.loadingState is LoadingState.LoadingEnd && controller.loadingState.success) {
+        onPageTitle(controller.bridge.evaluateScript("document.title"))
+    }
+}
+```
+
+Use fixed scripts and explicit serialization. Concatenating untrusted input into JavaScript creates injection risk.
+
+## Page-to-host messages
+
+```kotlin
+LaunchedEffect(controller) {
+    val handle = controller.bridge.registerWebMessageHandler { payload -> onWebEvent(payload) }
+    try { awaitCancellation() } finally { handle.close() }
+}
+```
+
+The page-side entry point depends on the backend: WebView2 uses `window.chrome.webview.postMessage(...)`, WebKit uses `window.webkit.messageHandlers.wvbridge.postMessage(...)`, and Android uses `window._wvbridge.postMessage(...)`. Treat payloads as untrusted strings and validate schema, size, and permissions.
+
+## Document-start hooks
+
+```kotlin
+LaunchedEffect(controller) {
+    val hook = controller.bridge.registerDocumentStartHook("window.__hostTheme = 'dark';")
+    try { awaitCancellation() } finally { hook.close() }
+}
+```
+
+Hooks affect **later** page loads. Use `evaluateScript()` for the already-open page, then navigate or refresh for document-start behavior.
+
+## Cleanup and security
+
+```text
+UI enters composition
+        │
+        ├─ registerWebMessageHandler ──> CloseHandle
+        └─ registerDocumentStartHook ──> CloseHandle
+                                           │
+UI leaves / feature closes ───────────────┘ close()
+```
+
+Close every handle in `finally` or `DisposableEffect`. A bridge is a trust boundary, not authentication: enable privileged protocols only for controlled origins, validate every event, and never map messages directly to file, account, payment, or arbitrary script operations. Android registrations may be unsupported; feature-check and provide a fallback.
+
+For URL-level source restrictions, combine this page with [Interceptors](/en/interceptor/).

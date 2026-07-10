@@ -1,0 +1,55 @@
+---
+title: Installation
+description: Add wvbridge to your Compose Multiplatform project.
+---
+
+[![Latest release](https://img.shields.io/github/v/release/magic-cucumber/wvbridge?label=latest%20release)](https://github.com/magic-cucumber/wvbridge/releases/latest)
+
+Add the common API to your shared source set:
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("top.kagg886.wvbridge:core:<version>")
+        }
+    }
+}
+```
+
+## JVM runtime
+
+JVM targets also need the native runtime for the current platform. Use Google's `os-detector` Gradle plugin to select it from `osdetector.classifier`:
+
+:::caution
+On JVM, the `core` artifact must be paired with the matching `platform-*` runtime artifact at the **same version**. Do not use `core` by itself.
+:::
+
+```kotlin
+plugins {
+    id("com.google.osdetector") version "1.7.3"
+}
+
+kotlin {
+    jvm()
+
+    sourceSets {
+        jvmMain.dependencies {
+            val platform = when (osdetector.classifier) {
+                "windows-x86_64" -> "platform-windows"
+                "linux-x86_64" -> "platform-linux"
+                "osx-aarch_64" -> "platform-macos"
+                else -> error("Unsupported JVM runtime: ${osdetector.classifier}")
+            }
+
+            runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+        }
+    }
+}
+```
+
+The JVM native runtime currently supports Windows x64, Linux x64, and macOS arm64.

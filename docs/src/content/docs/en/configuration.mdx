@@ -1,0 +1,98 @@
+---
+title: Configure WebView
+description: Choose creation-time user-agent, storage, profile, and desktop data settings.
+---
+
+import { Aside, Badge, Card, CardGrid } from '@astrojs/starlight/components';
+
+`WebViewConfig` is applied when `rememberWebViewController()` creates the native view. Changing the object later does not reconfigure an existing instance.
+
+<Aside type="tip" title="Start with the scenario">
+Decide whether a screen is persistent, guest-only, account-isolated, or needs a managed desktop data directory before choosing a platform config.
+</Aside>
+
+## On this page
+
+1. [Choose by scenario](#choose-by-scenario)
+2. [Common options](#common-options)
+3. [Platform options](#platform-options)
+4. [Creation and recreation](#creation-and-recreation)
+5. [API reference](#api-reference)
+
+## Choose by scenario
+
+| Need | Recommended setting | Result |
+| --- | --- | --- |
+| Persistent signed-in browsing | `WebViewConfig()` | Platform default persistent storage. |
+| Guest or sensitive preview | iOS/macOS `NON_PERSISTENT` | No persistent WebKit website data. |
+| Separate Android accounts | A distinct AndroidX `Profile` per view | Cookies, DOM storage, permissions, workers, and cache follow the profile boundary. |
+| Managed desktop data | JVM `dataDir` (and Linux `cacheDir`) | Native backend stores data in application-controlled paths. |
+| Identify the host app | `userAgent` | Creation-time User-Agent override. |
+
+<CardGrid>
+	<Card title="Instance-level configuration" icon="setting">One config describes one native WebView creation; it is not a runtime settings panel.</Card>
+	<Card title="Platform fields vary" icon="warning">Put `WebViewPlatformConfig` values in the matching source set because `expect/actual` fields differ.</Card>
+</CardGrid>
+
+## Common options
+
+`commonMain` can safely set `userAgent`; `null` keeps the platform default.
+
+```kotlin
+val controller = rememberWebViewController(
+    url = "https://help.example.com",
+    config = WebViewConfig(userAgent = "ExampleApp/1.0"),
+)
+```
+
+<Aside type="caution" title="JVM User-Agent behavior">On JVM the value replaces the current OS backend User-Agent. The backend settings are selected for the operating system that is actually running.</Aside>
+
+## Platform options
+
+### Android profiles
+
+```kotlin
+config = WebViewConfig(platform = WebViewPlatformConfig(profile = profile))
+```
+
+When `profile` is non-null, check AndroidX `WebViewFeature.MULTI_PROFILE` first; unsupported runtimes throw `UnsupportedOperationException`. `null` uses the default profile.
+
+### iOS website data
+
+```kotlin
+config = WebViewConfig(platform = WebViewPlatformConfig(
+    websiteDataStore = WebsiteDataStore.NON_PERSISTENT,
+))
+```
+
+### JVM directories
+
+```kotlin
+config = WebViewConfig(platform = WebViewPlatformConfig(
+    windowSetting = WebViewPlatformConfig.Windows(dataDir = "C:/ExampleApp/webview"),
+    linuxSetting = WebViewPlatformConfig.Linux(
+        dataDir = "/var/lib/example-app/webview",
+        cacheDir = "/var/cache/example-app/webview",
+    ),
+))
+```
+
+| Backend | Fields | Default |
+| --- | --- | --- |
+| Windows / WebView2 | `windowSetting.dataDir` | `${java.io.tmpdir}/wvbridge` |
+| Linux / WebKitGTK | `linuxSetting.dataDir`, `cacheDir` | `${java.io.tmpdir}/wvbridge/data`, `${java.io.tmpdir}/wvbridge/cache` |
+| macOS / WKWebView | `macOSSetting.websiteDataStore` | `DEFAULT` |
+
+## Creation and recreation
+
+```text
+WebViewConfig ──> rememberWebViewController(config) ──> native WebView
+      │                                      │
+      └── mutate later ─────────────────────┘  no reconfiguration
+```
+
+Create a new controller/WebView lifecycle when changing account, storage mode, or data directory. Android currently keys remembering by `userAgent`; iOS and JVM use the whole config.
+
+## API reference
+
+<Badge text="Dokka" variant="note" /> See [WebViewConfig and WebViewPlatformConfig](https://wvbridge.kagg886.top/dokka/index.html), [rememberWebViewController](https://wvbridge.kagg886.top/dokka/index.html), and the [complete API](https://wvbridge.kagg886.top/dokka/index.html).

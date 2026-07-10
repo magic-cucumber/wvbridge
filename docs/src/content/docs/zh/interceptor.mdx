@@ -1,0 +1,134 @@
+---
+title: 请求拦截器
+description: 在顶层页面跳转发生前，按优先级执行允许、拒绝或重定向策略。
+---
+
+很多 WebView 场景需要治理「将要打开哪个页面」：把支付或地图 deep link 交给宿主应用、阻止离开受信任站点、把旧地址迁到新地址。`Interceptor` 为这类**顶层导航**提供一个同步、可撤销的决策链。它不是网络代理，也不是离线资源缓存层。
+
+完整签名可查看 [Interceptor API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.interceptor/-interceptor/index.html) 和 [InterceptorHandler API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.interceptor/-interceptor-handler/index.html)。
+
+## 本页导航
+
+- [注册一条导航策略](#注册一条导航策略)
+- [返回值和执行顺序](#返回值和执行顺序)
+- [可拦截范围](#可拦截范围)
+- [平台映射与注意事项](#平台映射与注意事项)
+- [撤销策略](#撤销策略)
+
+## 注册一条导航策略
+
+从 controller 取得 `interceptor`，并注册一个接收 URL 的处理器。下面的例子表达常见的「站内页面继续留在 WebView，系统 deep link 由宿主处理」策略；实际打开外部应用的动作应由宿主代码完成。
+
+```kotlin
+val handle = controller.interceptor.registerNavigationInterceptor { url ->
+    when {
+        url.startsWith("https://docs.example.com/") ->
+            InterceptorHandler.Result.Ignore
+
+        url.startsWith("myapp://") -> {
+            // 将 url 交给宿主的 deep-link 分发器。
+            InterceptorHandler.Result.Rejected
+        }
+
+        else -> InterceptorHandler.Result.Ignore
+    }
+}
+```
+
+`Ignore` 并不等于拒绝；它表示该规则不作决定，交给后续规则。若全部规则都忽略，最终默认允许导航。使用 `Rejected` 取消原请求，能避免 WebView 尝试加载不应由它处理的 scheme。
+
+:::tip[用 URL 解析器做安全判断]
+处理器拿到的是字符串。生产代码应解析 scheme、host、端口和路径，不要仅以 `startsWith("https://trusted.example")` 作为可信域判断，以免把相似域名误判为可信。
+:::
+
+## 返回值和执行顺序
+
+规则按 `index` 从小到大执行；相同 `index` 的多个规则保留平台实现的注册顺序。遇到第一个非 `Ignore` 的结果就停止，不会继续询问后面的规则。
+
+```text
+index -100（安全策略） ── Ignore ──┐
+index    0（业务路由） ── Redirect ─┼──> 结束，后续规则不再执行
+index  100（默认策略） ────────────┘
+
+全部 Ignore ─────────────────────────> Allowed（默认）
+```
+
+| 返回值 | 决策链 | 原生 WebView 的结果 |
+| --- | --- | --- |
+| `Ignore` | 继续下一条；没有下一条则默认允许 | 不在此处改变导航 |
+| `Allowed` | 立即结束 | 继续原 URL 的导航 |
+| `Rejected` | 立即结束 | 取消原 URL 的导航 |
+| `Redirected(url)` | 立即结束 | 取消原 URL，并加载指定 URL；若指定 URL 等于当前 URL，平台实现会改为刷新当前页 |
+
+可以把不可绕过的策略置于较小的 index，把可选的业务规则置于其后：
+
+```kotlin
+controller.interceptor.registerNavigationInterceptor(index = -100) { url ->
+    if (url.startsWith("file:")) InterceptorHandler.Result.Rejected
+    else InterceptorHandler.Result.Ignore
+}
+
+controller.interceptor.registerNavigationInterceptor(index = 0) { url ->
+    if (url == "https://old.example.com/") {
+        InterceptorHandler.Result.Redirected("https://www.example.com/")
+    } else {
+        InterceptorHandler.Result.Ignore
+    }
+}
+```
+
+:::caution[处理器应快速且无阻塞]
+`InterceptorHandler` 是同步函数，原生导航决策正在等待它的结果。不要在其中发起网络请求、等待协程或执行耗时 I/O；需要远程策略时，应提前准备本地可读取的规则，再即时决定。
+:::
+
+## 可拦截范围
+
+拦截器面向的是顶层 URL 导航策略，例如用户点击链接、页面跳转、重定向和可由平台引擎报告的导航动作。它不拦截页面内部的所有请求。
+
+| 目标 | 此 API 是否负责 | 应考虑的替代方式 |
+| --- | --- | --- |
+| 顶层 URL 是否继续、取消或改址 | 是 | `registerNavigationInterceptor()` |
+| 图片、脚本、样式表等子资源 | 否 | 平台原生资源拦截能力或页面侧方案 |
+| fetch / XHR 请求与响应体 | 否 | 服务端代理、页面 JavaScript、平台网络栈能力 |
+| 将页面资源离线替换为本地内容 | 否 | 自定义 scheme、平台原生资源 loader 或 Web 资源架构 |
+| 网页发给宿主的数据 | 否 | [JavaScriptBridge](/zh/javascript-bridge/) 的 Web Message handler |
+
+:::note[离线不是 Redirected 的同义词]
+`Redirected` 只把一个**顶层地址**换成另一个地址，不能逐个替换 HTML 中请求的图片、脚本或 API 数据。若离线方案依赖这些资源，请在 WebView 外设计资源服务方式，而不是把导航拦截器当成 request interceptor。
+:::
+
+## 平台映射与注意事项
+
+公共接口在三类实现中使用相同的优先级与返回语义，但实际触发点来自宿主 WebView 的导航回调：
+
+| 平台 | 实现接入点 | `Redirected` 的处理 |
+| --- | --- | --- |
+| Android | `WebViewClient.shouldOverrideUrlLoading` | 返回 `true` 取消当前请求，再用 `loadUrl()` 加载目标；目标等于当前 URL 时刷新。 |
+| iOS | `WKNavigationDelegate.decidePolicyForNavigationAction` | 先向 delegate 返回取消，再请求目标 URL；目标等于当前 URL 时刷新。 |
+| JVM 桌面 | `WebViewBridgePanel` 的原生导航回调 | 将允许、拒绝、重定向编码为原生后端的决策结果。 |
+
+Android 源码中 `navigator.loadUrl()` 直接调用 Android `WebView.loadUrl()`，而拦截分发写在 `shouldOverrideUrlLoading` 回调内。因此不要把这个 API 当作对每一次程序主动 `loadUrl()` 的统一回调保证；若应用自己的按钮需要先走同一策略，请在调用导航器前复用你的策略函数。
+
+同样地，导航回调的触发细节（某些重定向、历史记录或自定义 scheme 是否由宿主引擎报告）由平台 WebView 决定。跨平台业务应把拦截器视为导航治理层，而不是精确的请求审计日志。
+
+## 撤销策略
+
+每次注册都会返回 `CloseHandle`。在页面、功能或登录态策略失效时关闭它，避免规则在后续导航继续生效。
+
+```kotlin
+DisposableEffect(controller, accountId) {
+    val handle = controller.interceptor.registerNavigationInterceptor { url ->
+        if (url.startsWith("https://account.example.com/")) {
+            InterceptorHandler.Result.Allowed
+        } else {
+            InterceptorHandler.Result.Ignore
+        }
+    }
+
+    onDispose { handle.close() }
+}
+```
+
+关闭同一个 handle 是幂等的。若尝试把同一个 handler 对象在同一优先级重复注册，平台实现会拒绝该重复注册；通常在 `DisposableEffect` 中一次注册、一次关闭即可。
+
+下一步可阅读 [Controller 导读](/zh/controller/)，了解 `interceptor` 与 `navigator`、加载状态如何绑定到同一个 WebView 实例。

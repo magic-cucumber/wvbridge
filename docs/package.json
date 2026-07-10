@@ -1,0 +1,19 @@
+{
+  "name": "wvbridge-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "prepare:dokka": "node scripts/copy-dokka.mjs",
+    "build": "npm run prepare:dokka && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "^7.0.2",
+    "sharp": "^0.34.5"
+  }
+}

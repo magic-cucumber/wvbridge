@@ -1,9 +1,9 @@
-name: dokka.yaml
+name: Deploy documentation
 on:
   workflow_dispatch:
 
 jobs:
-  release-dokka:
+  build-documentation:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -12,20 +12,36 @@ jobs:
       - name: Setup Environment
         uses: ./.github/actions/setup-base
 
-      - name: Publish
+      - name: Generate API reference
         run: ./gradlew :dokkaGenerate
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install documentation dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+
+      - name: Build documentation site
+        working-directory: docs
+        run: pnpm build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/dokka/html
+          path: docs/dist
 
   publish:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     needs:
-      - release-dokka
+      - build-documentation
     runs-on: ubuntu-latest
     name: Deploy
     permissions:

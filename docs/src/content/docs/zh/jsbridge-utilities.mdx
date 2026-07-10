@@ -1,0 +1,234 @@
+---
+title: JavaScript 增强工具
+description: 使用 jsbridge 在 Compose Multiplatform 与复杂网页之间交换结构化数据、事件与命令结果。
+---
+
+import { Aside, Badge, Card, CardGrid } from '@astrojs/starlight/components';
+
+当 WebView 不只是展示页面，而是要读取页面状态、把宿主主题推给前端，或让网页请求原生能力时，`jsbridge` 在 core 的 `JavaScriptBridge` 之上提供了统一的 `JSValue` 协议与消息工具。
+
+<Aside type="tip" title="先安装扩展产物">
+`jsbridge` 依赖 `core`；在 `commonMain` 加入 `implementation("top.kagg886.wvbridge:jsbridge:&lt;version&gt;")`。JVM 仍需按[安装说明](/zh/installation/)为 core 配置同版本的平台运行时。
+</Aside>
+
+## 本页导览
+
+1. [选择交互模型](#选择交互模型)：读数据、通知、Kotlin 请求网页、网页请求 Kotlin。
+2. [读取复杂页面数据](#读取复杂页面数据)：`evaluateScriptValue` 与 `JSValue`。
+3. [发送事件](#发送事件)：`postMessage`。
+4. [命令与响应](#命令与响应)：`postMessageAndReceiveResult` 与带回复处理器。
+5. [接收网页通知](#接收网页通知)：`registerWebMessageHandler` 与生命周期。
+6. [边界与 API 参考](#边界与-api-参考)：异常、超时和 Dokka。
+
+## 选择交互模型
+
+| 场景 | Kotlin API | 网页侧 API | 谁等待结果 |
+| --- | --- | --- | --- |
+| 读取当前商品页标题、价格和可购买状态 | `evaluateScriptValue` | 无需预先注册 | Kotlin 等待脚本求值完成 |
+| 宿主切换深色模式、语言或登录展示态 | `postMessage` | `window.wvbridge.addEventListener()` | 无返回值 |
+| Kotlin 请求网页执行一项异步任务 | `postMessageAndReceiveResult` | `addEventListener()` 中调用 `reply` | Kotlin 等网页回调 |
+| 网页请求原生保存、分享或鉴权，并期待结果 | `registerWebMessageHandlerWithReply` | `postMessageAndReceiveResult()` | 网页等 Kotlin 回调 |
+| 网页上报表单变化、埋点或导航意图 | `registerWebMessageHandler` | `window.wvbridge.postMessage()` | 无返回值 |
+
+<CardGrid>
+	<Card title="类型路由" icon="document">
+		每条消息都有应用自定义的 `type`；处理器只接收相同 type 的包。
+	</Card>
+	<Card title="一份页面 API" icon="approve-checkmark">
+		工具首次使用时会安装 `window.wvbridge`，并同时在当前页求值以便立即可用。
+	</Card>
+</CardGrid>
+
+## 读取复杂页面数据
+
+商品详情、支付状态或富文本编辑器的状态不应依赖各平台 `evaluateScript` 返回的字符串格式。`evaluateScriptValue()` 会把脚本作为**函数体**执行，因此要用 `return` 返回数据，并将结果统一为 `JSValue`。
+
+```kotlin title="读取商品页的可展示数据"
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import top.kagg886.wvbridge.js.evaluateScriptValue
+import top.kagg886.wvbridge.js.protocol.JSValue
+
+val result = controller.bridge.evaluateScriptValue(
+    """
+    const price = document.querySelector("[data-price]")?.dataset.price;
+    return {
+        title: document.title,
+        price,
+        inStock: Boolean(document.querySelector("[data-in-stock='true']")),
+    };
+    """.trimIndent(),
+)
+
+when (result) {
+    is JSValue.Serializable -> {
+        val title = result.value["title"]?.jsonPrimitive?.contentOrNull
+        // result.value 是 kotlinx.serialization.json.JsonObject
+        showProduct(title = title, payload = result.value)
+    }
+    is JSValue.Error -> showPageScriptError(result.stacktrace)
+    JSValue.Null, JSValue.Undefined -> showEmptyState()
+    is JSValue.ScriptObject -> showUnsupportedValue(result.type, result.value)
+}
+```
+
+| `JSValue` 变体 | 适合如何处理 |
+| --- | --- |
+| `Serializable(JsonObject)` | 纯 JSON 对象；从 `JsonObject` 按字段读取。 |
+| `ScriptObject(type, value)` | string、boolean、number 或无法无损 JSON 化的对象／函数；使用转换工具或按类型降级。 |
+| `Error(stacktrace)` | 脚本本身抛出了异常；记录并展示合适的失败状态。 |
+| `Null` / `Undefined` | 区分网页显式返回 `null` 与未返回值／无原生结果。 |
+
+### 原始值转换
+
+JavaScript 的 string、boolean 与 number 会归入 `ScriptObject`。`jsbridge` 提供严格和可空两组转换：
+
+```kotlin title="将脚本原始值转换为 Kotlin 值"
+import top.kagg886.wvbridge.js.evaluateScriptValue
+import top.kagg886.wvbridge.js.util.asBooleanOrNull
+import top.kagg886.wvbridge.js.util.asDouble
+import top.kagg886.wvbridge.js.util.asString
+
+val title = controller.bridge.evaluateScriptValue("return document.title;").asString()
+val zoom = controller.bridge.evaluateScriptValue("return window.devicePixelRatio;").asDouble()
+val online = controller.bridge.evaluateScriptValue("return navigator.onLine;").asBooleanOrNull()
+```
+
+`asString()`、`asBoolean()` 和 `asDouble()` 在类型不匹配时抛出 `IllegalArgumentException`；对应的 `OrNull` 版本用于不可信或可选的页面数据。number 映射为 Kotlin `Double`。
+
+## 发送事件
+
+当宿主状态变化只需要让前端更新，不需要确认结果时，用 `postMessage()`。它只允许发送 `Undefined`、`Null` 和 `Serializable`；`ScriptObject`、`Error` 作为出站值会抛出 `IllegalArgumentException`。
+
+```javascript title="网页：订阅宿主的主题通知"
+window.wvbridge.addEventListener("host:theme", (theme) => {
+  document.documentElement.dataset.theme = theme.name;
+});
+```
+
+```kotlin title="Kotlin：通知当前网页"
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import top.kagg886.wvbridge.js.postMessage
+import top.kagg886.wvbridge.js.protocol.JSValue
+
+controller.bridge.postMessage(
+    type = "host:theme",
+    JSValue.Serializable(buildJsonObject { put("name", "dark") }),
+)
+```
+
+<Aside type="caution" title="先注册监听器">
+如果当前网页没有匹配 type 的 JavaScript 监听器，`postMessage()` 会失败并抛出 `IllegalStateException`（底层 `check` 失败）。页面导航后，网页侧监听器也需要由新页面重新注册。
+</Aside>
+
+## 命令与响应
+
+### Kotlin 请求网页并等待一个结果
+
+例如原生 UI 需要网页完成一次异步查询。网页监听器最后一个参数是 `reply`，应只调用一次。
+
+```javascript title="网页：响应原生发起的命令"
+window.wvbridge.addEventListener("catalog:lookup", async (query, reply) => {
+  try {
+    const response = await fetch(`/api/catalog?q=${encodeURIComponent(query.keyword)}`);
+    reply({ ok: response.ok, items: await response.json() });
+  } catch (error) {
+    reply({ ok: false, message: String(error) });
+  }
+});
+```
+
+```kotlin title="Kotlin：发命令并等待网页回调"
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import top.kagg886.wvbridge.js.postMessageAndReceiveResult
+import top.kagg886.wvbridge.js.protocol.JSValue
+import kotlin.time.Duration.Companion.seconds
+
+val answer = controller.bridge.postMessageAndReceiveResult(
+    type = "catalog:lookup",
+    timeout = 5.seconds,
+    JSValue.Serializable(buildJsonObject { put("keyword", "compose") }),
+)
+```
+
+这个调用会临时注册响应处理器，并在返回或抛出时关闭它。网页没有监听器时会立即以 `IllegalStateException` 失败；监听器未在超时前调用 `reply` 时会抛出 `TimeoutCancellationException`。
+
+### 网页请求 Kotlin 并等待回复
+
+反方向适合网页需要调用原生分享、凭据保存等能力。Kotlin 的处理器是 `suspend` 函数，拿到 payload 与 `reply`；回复应是 `Undefined`、`Null` 或 `Serializable`。
+
+```kotlin title="Kotlin：处理网页的原生分享请求"
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import top.kagg886.wvbridge.js.registerWebMessageHandlerWithReply
+import top.kagg886.wvbridge.js.protocol.JSValue
+
+val handle = controller.bridge.registerWebMessageHandlerWithReply("native:share") { values, reply ->
+    val payload = values.firstOrNull() as? JSValue.Serializable
+    val shared = payload?.let { shareFromNativeUi(it.value) } ?: false
+
+    reply(JSValue.Serializable(buildJsonObject { put("shared", shared) }))
+}
+```
+
+```javascript title="网页：调用原生能力并处理结果或超时"
+window.wvbridge.postMessageAndReceiveResult("native:share", {
+  timeout: 10_000,
+  args: [{ title: document.title, url: location.href }],
+  success(result) { console.log("shared:", result.shared); },
+  error(reason) { console.error("native share failed:", reason); },
+});
+```
+
+网页侧默认 timeout 是 30 秒。Kotlin 在网页超时后再调用 `reply` 不会破坏 Kotlin 侧状态，但网页生成的回调可能已经被移除，因此业务代码应尽快且只回复一次。
+
+## 接收网页通知
+
+`registerWebMessageHandler()` 用于无需回复的网页事件；无法解码的包与 type 不匹配的包都会被忽略。保留返回的 `CloseHandle`，在页面／Composable 生命周期结束时关闭，避免处理器继续接收事件。
+
+```kotlin title="Compose：在进入屏幕后订阅表单变化，并在离开时关闭"
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.awaitCancellation
+import top.kagg886.wvbridge.js.registerWebMessageHandler
+import top.kagg886.wvbridge.js.protocol.JSValue
+
+LaunchedEffect(controller) {
+    val handle = controller.bridge.registerWebMessageHandler("checkout:changed") { values ->
+        val change = values.firstOrNull() as? JSValue.Serializable ?: return@registerWebMessageHandler
+        onCheckoutChanged(change.value)
+    }
+
+    try {
+        awaitCancellation()
+    } finally {
+        handle.close()
+    }
+}
+```
+
+```javascript title="网页：上报无回复的状态变化"
+window.wvbridge.postMessage("checkout:changed", {
+  quantity: 2,
+  couponApplied: true,
+});
+```
+
+<Aside type="caution" title="Android 运行时能力">
+Android 的原生消息处理依赖 AndroidX WebKit `WEB_MESSAGE_LISTENER`。当前 WebView runtime 不支持时，注册会抛出 `UnsupportedOperationException`；将功能检查与降级逻辑放在应用层。
+</Aside>
+
+## 边界与 API 参考
+
+- `window.wvbridge` 是 jsbridge 注入的公开页面 API；`window.__wvbridge__` 是内部实现，应用页面不要依赖它。
+- 注入脚本会登记为 document-start hook，并同时对当前页执行；未来导航会在页面脚本之前具备该桥。网页自己的 listener 仍由页面负责注册。
+- 消息的 origin、frame 与安全限制由宿主平台原生 WebView 决定；不要把任意网页来源当作可信的原生命令调用方。
+- 原生 `JavaScriptBridge` 求值错误可直接抛出；`evaluateScriptValue()` 捕获**脚本执行**错误并把它表示成 `JSValue.Error`，两者都应纳入错误处理。
+
+<Badge text="Dokka" variant="note" /> 完整签名与平台支持请参阅：
+
+- [`evaluateScriptValue`](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/evaluate-script-value.html)、[`postMessage`](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/post-message.html)、[`postMessageAndReceiveResult`](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/post-message-and-receive-result.html)
+- [`registerWebMessageHandler`](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/register-web-message-handler.html) 与 [jsbridge 模块总览](https://wvbridge.kagg886.top/dokka/jsbridge/index.html)
+- [`asString` / `asBoolean` / `asDouble` 转换工具](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js.util/as-string.html)
+

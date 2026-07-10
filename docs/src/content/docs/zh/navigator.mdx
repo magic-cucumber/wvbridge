@@ -1,0 +1,129 @@
+---
+title: 导航器
+description: 用 Navigator 为嵌入式网页提供历史、刷新、停止和地址跳转操作。
+---
+
+## 从内容页到可控浏览流程
+
+嵌入网页的应用通常不需要复刻浏览器，却仍需要保留少量、符合任务流的网页控制：用户完成表单后回到上一页；内容加载缓慢时取消请求；点击应用内链接后跳转到指定帮助文章。把这些动作散落在原生平台代码中，会让共享 UI 失去一致性。
+
+`controller.navigator` 是绑定到当前 `WebViewController` 所拥有的**同一个原生 WebView** 的导航入口。它只覆盖通用的顶层页面操作，适合由 Compose 工具栏、错误页和业务按钮调用。
+
+完整签名请查看本地 [Navigator Dokka API](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/index.html)。
+
+## 本页导航
+
+- [将能力状态直接绑定到按钮](#将能力状态直接绑定到按钮)
+- [操作一览](#操作一览)
+- [跳转、刷新与失败重试](#跳转刷新与失败重试)
+- [生命周期与平台行为](#生命周期与平台行为)
+
+## 将能力状态直接绑定到按钮
+
+后退和前进是否可用不是应用应自行维护的布尔值。`canGoBack` 与 `canGoForward` 是可观察的 Compose state，由原生 WebView 的历史记录变化同步；直接用它们决定按钮的 `enabled`，即可避免历史栈变化后 UI 仍显示错误状态。
+
+```kotlin
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import top.kagg886.wvbridge.WebViewController
+
+@Composable
+fun ArticleActions(controller: WebViewController<*>) {
+    val navigator = controller.navigator
+
+    Button(
+        enabled = navigator.canGoBack,
+        onClick = { navigator.goBack() },
+    ) {
+        Text("返回网页上一页")
+    }
+
+    Button(
+        enabled = navigator.canGoForward,
+        onClick = { navigator.goForward() },
+    ) {
+        Text("前进")
+    }
+}
+```
+
+`goBack()` 和 `goForward()` 的返回值不是“本次操作是否成功”的通用回执：它表示**执行这次请求后**，同方向是否还有下一步历史记录。常规 UI 不需要依赖该返回值来更新按钮，直接读取上述 state 更可靠。
+
+:::tip[状态会随原生历史变化同步]
+Android 在历史更新、页面完成和主框架错误时读取原生历史能力；iOS 观察 `WKWebView` 的 `canGoBack`/`canGoForward`；JVM 桌面端订阅原生面板的能力变化。应用不应维护一份平行的历史栈。
+:::
+
+## 操作一览
+
+| 操作 | 使用场景 | 结果与注意事项 | Dokka |
+| --- | --- | --- | --- |
+| `goBack()` | 网页内返回 | 请求跳转到上一条历史记录；返回值表示跳转后是否还能继续后退。 | [`goBack`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/go-back.html) |
+| `goForward()` | 用户撤销一次后退 | 请求跳转到下一条历史记录；返回值表示跳转后是否还能继续前进。 | [`goForward`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/go-forward.html) |
+| `refresh()` | 重新加载最后成功页面 | 委托给原生 WebView 的 reload 行为。 | [`refresh`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/refresh.html) |
+| `stop()` | 用户取消仍在进行的加载 | 仅在当前平台后端此刻支持取消时停止。 | [`stop`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/stop.html) |
+| `loadUrl(url)` | 打开新内容、重试指定地址 | 启动一次新的顶层导航；底层引擎支持时可使用自定义 scheme。 | [`loadUrl`](/dokka/core/top.kagg886.wvbridge/-web-view-navigator/load-url.html) |
+
+## 跳转、刷新与失败重试
+
+例如，帮助中心可以将应用自己的菜单项映射到指定文章，同时给用户一个明确的加载中取消入口。`loadingState` 由 controller 提供，导航命令仍由同一个 `navigator` 发出：
+
+```kotlin
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import top.kagg886.wvbridge.LoadingState
+
+Button(
+    onClick = {
+        controller.navigator.loadUrl("https://example.com/help/account")
+    },
+) {
+    Text("账号与登录帮助")
+}
+
+if (controller.loadingState is LoadingState.Loading) {
+    Button(onClick = { controller.navigator.stop() }) {
+        Text("取消加载")
+    }
+}
+```
+
+### 刷新与重试不是同一件事
+
+`refresh()` 刷新的是最近一次**成功加载**的页面。若用户刚输入的地址加载失败，`controller.url` 仍会记录那次尝试，但 `refresh()` 可能回到上一张成功页面。要明确重试这次失败地址，请调用：
+
+```kotlin
+val state = controller.loadingState
+if (state is LoadingState.LoadingEnd && !state.success) {
+    Button(onClick = { controller.navigator.loadUrl(controller.url) }) {
+        Text("重试")
+    }
+}
+```
+
+这一区别也适用于地址栏：`controller.url` 是最近一次顶层导航的尝试地址，可能是重定向、历史跳转或失败请求的目标，而非“最后成功显示的 URL”。关于加载状态和错误原因，请阅读 [Controller 导读](/zh/controller/)。
+
+## 生命周期与平台行为
+
+初始 URL 不必再手动调用 `loadUrl()`：`rememberWebViewController(url)` 会在原生视图达到 `Ready`、并且 `WebView(controller)` 已挂入 composition 后触发首次加载。之后用户操作和业务事件才使用 `navigator`。
+
+```text
+rememberWebViewController(initialUrl)
+              │
+              ▼
+     WebView(controller) 挂入 composition
+              │ 原生视图就绪
+              ▼
+      首次 loadUrl(initialUrl)
+              │
+              ▼
+  Loading ───────────────> LoadingEnd
+              ▲                │
+              └─ loadUrl / 刷新 / 历史跳转 / 重定向 ─┘
+```
+
+:::caution[不要在 controller 创建后假定网页已存在]
+`rememberWebViewController()` 先返回 controller；Android/iOS 很快就绪，而 JVM 必须等待 Swing/AWT 宿主与原生 peer 附着。仅创建 controller、尚未渲染 `WebView` 时，首屏导航不会开始。把导航控件与 `WebView` 保持在同一界面生命周期内，并用 `loadingState` 呈现准备和加载状态。
+:::
+
+`Navigator` 的 API 在 Android、iOS 和 JVM 桌面后端均存在，但实际的自定义 scheme、停止时机及浏览器历史由宿主引擎决定。若要在导航发生前允许、拒绝或重定向 URL，请继续阅读[拦截器](/zh/interceptor/)；若要设置创建期的用户代理或平台选项，请阅读[配置 WebViewConfig](/zh/webview-config/)。

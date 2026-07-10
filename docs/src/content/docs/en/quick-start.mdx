@@ -1,0 +1,120 @@
+---
+title: Quick start
+description: Render your first wvbridge WebView in Compose Multiplatform and understand platform layout boundaries.
+---
+
+import { Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+## The use case
+
+Many apps need to embed web-delivered content in shared UI: a help center, campaign page, login callback, or a module published by another team. The screen does not need to become a full browser. Compose owns the app chrome, back entry point, and status messages; `WebView` renders the page in the remaining space.
+
+`wvbridge` models this with two objects: **controller** manages state and operations for one native WebView, while `WebView` renders it in the current Compose layout. Both can be used from `commonMain`.
+
+## What you get
+
+<CardGrid>
+    <Card title="Shared UI entry point" icon="document">
+        Android, iOS, and JVM desktop use the same <code>WebView</code> Composable.
+    </Card>
+    <Card title="Observable page state" icon="information">
+        The controller exposes the current URL and loading state for titles and progress indicators.
+    </Card>
+    <Card title="Continued control of one instance" icon="right-arrow">
+        Navigation, interception, and JavaScript capabilities all continue from the controller.
+    </Card>
+</CardGrid>
+
+## Minimal correct example
+
+Complete [installation](/en/installation/) first. This screen keeps a Compose title bar and gives the remaining space to the page. Create the controller inside a Composable with `rememberWebViewController()`; do not construct a native WebView on every recomposition.
+
+<Steps>
+
+1. Create and remember a controller with the first URL.
+2. Render that controller with `WebView` and give it usable layout dimensions.
+
+</Steps>
+
+```kotlin
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.weight
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun HelpCenterScreen() {
+    val controller = rememberWebViewController(
+        url = "https://example.com/help",
+    )
+
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            text = "Help center",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        WebView(
+            controller = controller,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+```
+
+On first composition the controller creates the platform view; once ready, the library loads the initial URL. You do not need to call `loadUrl()` to start the first navigation.
+
+:::tip
+Keep the controller and `WebView` in the same UI lifetime. When `WebView` leaves composition it releases the native view it hosts. To reuse a browsing session across screens, define the controller's Compose lifetime deliberately.
+:::
+
+## Connect state and actions to your UI
+
+The controller is a source of Compose state and a place for button actions. This is an app content page, not a complete browser:
+
+```kotlin
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import top.kagg886.wvbridge.LoadingState
+
+if (controller.loadingState is LoadingState.Loading) {
+    CircularProgressIndicator()
+}
+
+Button(
+    enabled = controller.navigator.canGoBack,
+    onClick = { controller.navigator.goBack() },
+) {
+    Text("Back in page")
+}
+```
+
+`url` stores the most recently attempted top-level address, including failed navigations. `loadingState` describes native-view readiness and loading. See the [controller guide](/en/controller/) for its full lifecycle and the `navigator`, `bridge`, and `interceptor` responsibilities.
+
+## Platform and layout limits
+
+| Target | Native host | Layout note |
+| --- | --- | --- |
+| Android | System `android.webkit.WebView` | Integrated through Compose `AndroidView`; allocate an explicit size. |
+| iOS | `WKWebView` | Integrated through Compose UIKit interop; allocate an explicit size. |
+| JVM desktop | On-screen native view hosted by `SwingPanel` | Not an off-screen browser canvas; do not rely on Compose/Swing content covering the page. |
+
+:::caution[JVM desktop is not off-screen rendering]
+Windows, Linux, and macOS JVM backends use platform-native, **on-screen** WebView rendering (WebView2, WebKitGTK, and WebKit respectively). Compose or Swing elements cannot reliably be layered over the WebView, so floating buttons, modal scrims, and overlays should live outside its bounds.
+
+Put those controls in a top or bottom bar. If arbitrary Compose content must be composited with browser pixels, choose an off-screen Chromium solution; that is outside wvbridge's scope.
+:::
+
+JVM also requires a `platform-*` native runtime at the **same version** as `core`, and currently supports Windows x64, Linux x64, and macOS arm64. See the [JVM runtime installation notes](/en/installation/#jvm-runtime).
+
+## Next steps
+
+- Read the [controller guide](/en/controller/) to drive UI from loading state and discover navigation, interception, and JavaScript entry points.
+- Read [WebViewConfig configuration](/en/configuration/) before creating a controller.
+- Add interaction incrementally with the navigator, interceptor, and JavaScript interop guides.

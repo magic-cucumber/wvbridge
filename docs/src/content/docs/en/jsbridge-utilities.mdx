@@ -1,0 +1,92 @@
+---
+title: JavaScript enhancement utilities
+description: Exchange structured values, events, and command results between Compose and web content.
+---
+
+import { Aside, Badge, Card, CardGrid } from '@astrojs/starlight/components';
+
+When a WebView must read page state, receive host theme changes, or request native capabilities, the `jsbridge` module extends `JavaScriptBridge` with a shared `JSValue` protocol and message helpers.
+
+<Aside type="tip" title="Install the extension">Add `implementation("top.kagg886.wvbridge:jsbridge:<version>")` to `commonMain`; keep the JVM core and platform runtime versions aligned.</Aside>
+
+## On this page
+
+1. [Choose a message model](#choose-a-message-model)
+2. [Evaluate structured data](#evaluate-structured-data)
+3. [Send events](#send-events)
+4. [Request and reply](#request-and-reply)
+5. [Register web notifications](#register-web-notifications)
+6. [Boundaries and API reference](#boundaries-and-api-reference)
+
+## Choose a message model
+
+| Scenario | Kotlin API | Web API | Result owner |
+| --- | --- | --- | --- |
+| Read title, price, or status | `evaluateScriptValue` | none | Kotlin |
+| Push theme or locale | `postMessage` | `window.wvbridge.addEventListener` | none |
+| Kotlin asks web to run async work | `postMessageAndReceiveResult` | listener calls `reply` | Kotlin waits |
+| Web requests share/save/auth | `registerWebMessageHandlerWithReply` | `postMessageAndReceiveResult` | Web waits |
+| Web reports form or navigation state | `registerWebMessageHandler` | `window.wvbridge.postMessage` | none |
+
+<CardGrid><Card title="Type routing" icon="document">Handlers receive only envelopes with their registered application-defined `type`.</Card><Card title="One page API" icon="approve-checkmark">First use installs `window.wvbridge` and evaluates it in the current page; future navigations get a document-start hook.</Card></CardGrid>
+
+## Evaluate structured data
+
+`evaluateScriptValue` executes a function body, so use `return`; results are normalized to `JSValue`.
+
+```kotlin
+val result = controller.bridge.evaluateScriptValue("""
+    return { title: document.title, online: navigator.onLine };
+""".trimIndent())
+when (result) {
+    is JSValue.Serializable -> render(result.value)
+    is JSValue.Error -> showError(result.stacktrace)
+    JSValue.Null, JSValue.Undefined -> showEmpty()
+    is JSValue.ScriptObject -> showUnsupported(result.type)
+}
+```
+
+`asString()`, `asBoolean()`, and `asDouble()` are strict conversions; use their `OrNull` variants for optional page data.
+
+## Send events
+
+```kotlin
+controller.bridge.postMessage("host:theme", JSValue.Serializable(payload))
+```
+
+```javascript
+window.wvbridge.addEventListener("host:theme", theme => {
+  document.documentElement.dataset.theme = theme.name;
+});
+```
+
+Only `Undefined`, `Null`, and `Serializable` are valid outbound values. Register a matching listener before sending; otherwise the call fails with `IllegalStateException`.
+
+## Request and reply
+
+```kotlin
+val answer = controller.bridge.postMessageAndReceiveResult(
+    "catalog:lookup", timeout = 5.seconds, JSValue.Serializable(query)
+)
+```
+
+The web listener receives a final `reply` callback and should invoke it exactly once. Conversely, `registerWebMessageHandlerWithReply` lets a web page await native work. Web-side timeout defaults to 30 seconds; late replies should be avoided.
+
+## Register web notifications
+
+```kotlin
+val handle = controller.bridge.registerWebMessageHandler("checkout:changed") { values ->
+    onCheckoutChanged(values.firstOrNull())
+}
+// close handle when the screen leaves composition
+```
+
+Keep the returned `CloseHandle` and close it with the screen lifecycle. Android registration requires AndroidX WebKit `WEB_MESSAGE_LISTENER`; unsupported runtimes throw `UnsupportedOperationException`.
+
+## Boundaries and API reference
+
+- `window.wvbridge` is public page API; `window.__wvbridge__` is internal.
+- Origin, frame, and security policy remain platform WebView responsibilities; treat web origins as untrusted.
+- Script execution failures are represented as `JSValue.Error` by `evaluateScriptValue`; native bridge errors may still throw.
+
+<Badge text="Dokka" variant="note" /> See [evaluateScriptValue](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/evaluate-script-value.html), [postMessage](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/post-message.html), [postMessageAndReceiveResult](https://wvbridge.kagg886.top/dokka/jsbridge/top.kagg886.wvbridge.js/post-message-and-receive-result.html), and the [jsbridge module](https://wvbridge.kagg886.top/dokka/jsbridge/index.html).

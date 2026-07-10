@@ -16,3 +16,4 @@ Pods/
 *.gpg
 *yarn.lock
 .ace-tool/
+.pnpm-store

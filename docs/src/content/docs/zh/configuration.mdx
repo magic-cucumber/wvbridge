@@ -1,0 +1,175 @@
+---
+title: 配置 WebView
+description: 在创建原生 WebView 前，按登录态、隐私与桌面数据目录选择 WebViewConfig。
+---
+
+import { Aside, Badge, Card, CardGrid } from '@astrojs/starlight/components';
+
+`WebViewConfig` 是**创建时配置**：它决定即将创建的原生 WebView 使用的 User-Agent、网站数据存储和桌面数据目录。把它传给 `rememberWebViewController()`；控制器已经创建后再改配置对象，不会重配那个原生实例。
+
+<Aside type="tip" title="先从用户场景选配置">
+同一应用里的“普通浏览”“访客预览”和“工作账号”通常不该共享同一种网站数据。先决定是否需要保留数据、是否需要隔离，再选择目标平台配置。
+</Aside>
+
+## 本页导览
+
+1. [按场景选择](#按场景选择)：先确定数据是否持久化或隔离。
+2. [通用配置](#通用配置)：所有目标都能使用的 `userAgent`。
+3. [平台配置](#平台配置)：Android、iOS 与 JVM 的实际差异。
+4. [创建时机与重建](#创建时机与重建)：避免配置变更未生效。
+5. [API 参考](#api-参考)：跳转到 Dokka 的完整签名。
+
+## 按场景选择
+
+| 使用需求 | 推荐配置 | 结果 |
+| --- | --- | --- |
+| 站内常规浏览、希望下次仍登录 | 默认 `WebViewConfig()` | 使用各平台默认的持久化数据存储。 |
+| 访客窗口、敏感内容预览 | iOS/macOS 设为 `NON_PERSISTENT` | 该 WebView 使用非持久化的 WebKit 数据存储。 |
+| Android 中的两个独立账号空间 | 给每个 WebView 传入不同的 AndroidX `Profile` | WebView 绑定到指定 Profile；需要运行时支持多 Profile。 |
+| 桌面应用希望把浏览器数据放在应用目录 | JVM 的 Windows/Linux `dataDir`（及 Linux `cacheDir`） | 原生后端使用指定目录，而不是默认位置。 |
+| 服务端需要识别宿主应用 | `userAgent` | 创建时写入该 WebView 的 User-Agent。 |
+
+<CardGrid>
+	<Card title="配置是实例级的" icon="setting">
+		一次配置对应一次原生 WebView 创建；不是运行时的设置面板。
+	</Card>
+	<Card title="平台字段不是 common API" icon="warning">
+		`WebViewPlatformConfig` 的实际字段随编译目标变化，应把对应代码放在目标 source set。
+	</Card>
+</CardGrid>
+
+## 通用配置
+
+在共享的 `commonMain` 中，安全可用的字段是 `userAgent`。传入 `null`（默认值）表示让平台使用默认 User-Agent。
+
+```kotlin title="commonMain：为嵌入式帮助中心标识宿主应用"
+import androidx.compose.runtime.Composable
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun HelpCenter() {
+    val controller = rememberWebViewController(
+        url = "https://help.example.com",
+        config = WebViewConfig(
+            userAgent = "ExampleApp/1.0",
+        ),
+    )
+}
+```
+
+<Aside type="caution" title="JVM 的 User-Agent 覆盖规则">
+在 JVM 上，`userAgent` 会覆盖当前操作系统后端设置中的 User-Agent。Windows、Linux 与 macOS 只会将**当前运行系统**对应的设置传给原生后端。
+</Aside>
+
+## 平台配置
+
+`platform` 默认由 `defaultPlatformConfig()` 提供。它是 `expect/actual` 类型，故 Android、iOS 和 JVM 的可配置字段不同；以下代码应分别放进相应的 source set，而非复制到 `commonMain`。
+
+### Android：把账号空间绑定到 Profile
+
+对于“个人账号与工作账号不能共用登录状态”的界面，把现有 AndroidX WebKit `Profile` 传入配置。该 Profile 也就是由当前 WebView 使用的网站数据边界，涵盖 cookies、DOM storage、权限、Service Workers 与缓存。
+
+```kotlin title="androidMain：使用调用方持有的 AndroidX Profile"
+import androidx.compose.runtime.Composable
+import androidx.webkit.Profile
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.WebViewPlatformConfig
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun AccountWebView(profile: Profile) {
+    val controller = rememberWebViewController(
+        url = "https://portal.example.com",
+        config = WebViewConfig(
+            platform = WebViewPlatformConfig(profile = profile),
+        ),
+    )
+}
+```
+
+<Aside type="caution" title="先检查多 Profile 支持">
+当 `profile` 非空时，wvbridge 会检查 Android WebView runtime 的 `WebViewFeature.MULTI_PROFILE`；不支持时创建会抛出 `UnsupportedOperationException`。在把 Profile 交给 `WebViewConfig` 前，请用 AndroidX 的 feature check 安排降级路径。`null` 则使用平台默认 Profile。
+</Aside>
+
+### iOS：为访客预览关闭持久化数据
+
+例如在未登录状态预览外部页面时，可以选择 `NON_PERSISTENT`。默认值 `DEFAULT` 对应 WebKit 的默认持久化网站数据存储。
+
+```kotlin title="iosMain：访客预览"
+import androidx.compose.runtime.Composable
+import top.kagg886.wvbridge.config.WebsiteDataStore
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.WebViewPlatformConfig
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun GuestPreview() {
+    val controller = rememberWebViewController(
+        url = "https://preview.example.com",
+        config = WebViewConfig(
+            platform = WebViewPlatformConfig(
+                websiteDataStore = WebsiteDataStore.NON_PERSISTENT,
+            ),
+        ),
+    )
+}
+```
+
+### JVM：将桌面浏览数据放到可管理的位置
+
+JVM 产物同时声明了 Windows、Linux、macOS 的配置，但运行时只采用当前操作系统那一组：Windows 使用 WebView2，Linux 使用 WebKitGTK，macOS 使用 WKWebView。下例让 Windows 和 Linux 的数据路径显式归属应用数据目录；macOS 仍保留默认 WebKit 数据存储。
+
+```kotlin title="jvmMain：显式指定 Windows 与 Linux 数据目录"
+import androidx.compose.runtime.Composable
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.WebViewPlatformConfig
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun DesktopPortal() {
+    val controller = rememberWebViewController(
+        url = "https://app.example.com",
+        config = WebViewConfig(
+            platform = WebViewPlatformConfig(
+                windowSetting = WebViewPlatformConfig.Windows(
+                    dataDir = "C:/ExampleApp/webview",
+                ),
+                linuxSetting = WebViewPlatformConfig.Linux(
+                    dataDir = "/var/lib/example-app/webview",
+                    cacheDir = "/var/cache/example-app/webview",
+                ),
+            ),
+        ),
+    )
+}
+```
+
+| JVM 后端 | 可配置字段 | 默认值 |
+| --- | --- | --- |
+| Windows / WebView2 | `windowSetting.dataDir` | `${java.io.tmpdir}/wvbridge` |
+| Linux / WebKitGTK | `linuxSetting.dataDir`、`linuxSetting.cacheDir` | `${java.io.tmpdir}/wvbridge/data`、`${java.io.tmpdir}/wvbridge/cache` |
+| macOS / WKWebView | `macOSSetting.websiteDataStore` | `DEFAULT` |
+
+在 JVM 的 macOS 上，同样可用 `WebViewPlatformConfig.MacOS(websiteDataStore = WebViewPlatformConfig.MacOS.WebsiteDataStore.NON_PERSISTENT)` 开启非持久化数据存储。
+
+## 创建时机与重建
+
+配置在 `rememberWebViewController()` 创建原生实例时应用。iOS 与 JVM 以整个 `config` 作为 remember key；Android 当前以 `config.userAgent` 作为 remember key。因此，不要依赖在组合期间替换 `platform` 配置来更新现有 WebView，尤其是 Android Profile。
+
+```text
+WebViewConfig ──> rememberWebViewController(config) ──> 创建原生 WebView
+     │                                                   │
+     └── 改变对象 ───────────────────────────────────────┘
+                         不会重新配置已创建的实例
+```
+
+当账号、数据目录或存储模式确实需要切换时，请以新的配置创建新的控制器／WebView 生命周期，而不是尝试在已有控制器上修改它。
+
+## API 参考
+
+<Badge text="Dokka" variant="note" /> 完整的签名、默认值与平台 actual 声明请查看：
+
+- [`WebViewConfig` 与 `WebViewPlatformConfig`](https://wvbridge.kagg886.top/dokka/index.html)
+- [`rememberWebViewController`](https://wvbridge.kagg886.top/dokka/index.html)
+- [完整 API 文档](https://wvbridge.kagg886.top/dokka/index.html)

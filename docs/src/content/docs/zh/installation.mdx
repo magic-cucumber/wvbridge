@@ -1,0 +1,55 @@
+---
+title: 安装
+description: 将 wvbridge 添加到 Compose Multiplatform 项目中。
+---
+
+[![最新 Release](https://img.shields.io/github/v/release/magic-cucumber/wvbridge?label=latest%20release)](https://github.com/magic-cucumber/wvbridge/releases/latest)
+
+先在共享代码的 `commonMain` 中引入 common API：
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("top.kagg886.wvbridge:core:<version>")
+        }
+    }
+}
+```
+
+## JVM 运行时
+
+JVM 目标还需要当前平台对应的原生运行时。推荐使用 Google 的 `os-detector` Gradle 插件，通过 `osdetector.classifier` 选择运行时产物：
+
+:::caution
+在 JVM 上，`core` 产物必须配套使用**相同版本**的 `platform-*` 运行时产物；不能只引入 `core`。
+:::
+
+```kotlin
+plugins {
+    id("com.google.osdetector") version "1.7.3"
+}
+
+kotlin {
+    jvm()
+
+    sourceSets {
+        jvmMain.dependencies {
+            val platform = when (osdetector.classifier) {
+                "windows-x86_64" -> "platform-windows"
+                "linux-x86_64" -> "platform-linux"
+                "osx-aarch_64" -> "platform-macos"
+                else -> error("不支持的 JVM 运行环境：${osdetector.classifier}")
+            }
+
+            runtimeOnly("top.kagg886.wvbridge:$platform:<version>")
+        }
+    }
+}
+```
+
+当前 JVM 原生运行时支持 Windows x64、Linux x64 与 macOS arm64。

@@ -1,0 +1,49 @@
+---
+title: wvbridge
+description: A Kotlin-friendly, Compose Multiplatform bridge to the host platform WebView.
+template: splash
+hero:
+  tagline: One WebView API for Compose Multiplatform.
+  actions:
+    - text: Get started
+      link: /installation/
+      icon: right-arrow
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+`wvbridge` embeds the **host platform WebView** in Compose Multiplatform and exposes a small, common Kotlin API for loading pages, observing URL and loading state, and controlling browser navigation.
+
+> The project is actively developed. APIs and platform coverage may change.
+
+<CardGrid>
+	<Card title="Compose Multiplatform" icon="document">
+		Use one common API from shared UI code across Android, iOS, and JVM desktop targets.
+	</Card>
+	<Card title="System WebView" icon="setting">
+		Use only the host platform's built-in WebView engine—no bundled browser runtime.
+	</Card>
+	<Card title="Unified JS Bridge" icon="rocket">
+		Expose one consistent JavaScript bridge object to web content on every supported platform.
+	</Card>
+	<Card title="Small native footprint" icon="approve-checkmark">
+		Keep platform runtime libraries lean, at approximately 100 KB to 1.5 MB depending on the target.
+	</Card>
+</CardGrid>
+
+## Quick start
+
+```kotlin
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewController
+
+val webViewController = rememberWebViewController("https://example.com")
+
+WebView(
+    controller = webViewController,
+    modifier = Modifier,
+)
+```
+
+Continue with the [installation guide](/en/installation/) or open the API reference from the sidebar.

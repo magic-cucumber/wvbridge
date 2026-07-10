@@ -1,0 +1,139 @@
+---
+title: JavaScript 互操作性
+description: 在当前网页执行脚本、注入 document-start hook，并接收网页发往宿主的字符串消息。
+---
+
+## 适用场景
+
+一个嵌入式业务页面可能需要把网页标题、完成事件或用户操作交给 Compose UI；反过来，应用也可能要读取当前文档状态，或在每次页面开始时注入主题和埋点逻辑。`controller.bridge` 提供的是这层**低级、平台原生的 JavaScript 通道**：它不假设你的消息协议，也不把网页代码包装成某一种对象模型。
+
+本页说明 `core` 提供的字符串级 API。若需要带类型值、请求-响应协议和工具函数，请继续阅读[JavaScript 增强](/zh/javascript-enhancement/)。完整公共接口可查阅本地 [JavaScriptBridge Dokka API](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/index.html)。
+
+## 本页导航
+
+- [能力与时机](#能力与时机)
+- [宿主执行当前页面脚本](#宿主执行当前页面脚本)
+- [网页向宿主发送消息](#网页向宿主发送消息)
+- [为后续页面注册 document-start hook](#为后续页面注册-document-start-hook)
+- [释放与安全边界](#释放与安全边界)
+
+## 能力与时机
+
+| 能力 | 用途 | 返回/生命周期 | Dokka |
+| --- | --- | --- | --- |
+| `evaluateScript(script)` | 对当前已加载页面求值或触发动作 | `suspend`；结果是平台返回的字符串表示，求值失败可能抛异常。 | [`evaluateScript`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/evaluate-script.html) |
+| `registerWebMessageHandler(handler)` | 接收网页发到原生通道的消息 | `suspend`；公共 API 只传递 `String`，返回可关闭的注册句柄。 | [`registerWebMessageHandler`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/register-web-message-handler.html) |
+| `registerDocumentStartHook(script)` | 在**后续**页面加载的 document start 注入脚本 | `suspend`；返回可关闭的 hook 句柄。 | [`registerDocumentStartHook`](/dokka/core/top.kagg886.wvbridge.bridge/-java-script-bridge/register-document-start-hook.html) |
+
+三项操作都属于 controller 所绑定的同一个原生 WebView。将注册和调用放进协程；如果需要等待首屏完成再对 DOM 操作，观察 `controller.loadingState`，不要把 `Ready` 误解为页面已完成加载。
+
+## 宿主执行当前页面脚本
+
+例如，内容页加载完成后可读取页面标题，并将其用于 Compose 的标题区域。脚本在当前页面上下文执行，因此返回值应当按你自己的网页协议解析；它不是跨平台统一的 Kotlin 对象。
+
+```kotlin
+import androidx.compose.runtime.LaunchedEffect
+import top.kagg886.wvbridge.LoadingState
+
+LaunchedEffect(controller.loadingState) {
+    val state = controller.loadingState
+    if (state is LoadingState.LoadingEnd && state.success) {
+        val title = controller.bridge.evaluateScript("document.title")
+        // title 是原生引擎返回的字符串表示；按页面约定处理它。
+        onPageTitle(title)
+    }
+}
+```
+
+同样可用于向已存在的页面发送命令：
+
+```kotlin
+scope.launch {
+    controller.bridge.evaluateScript(
+        "window.dispatchEvent(new CustomEvent('app-theme', { detail: 'dark' }))",
+    )
+}
+```
+
+:::caution[不要用字符串拼接传入不可信数据]
+将 URL 参数、用户输入或网页返回文本直接拼进 JavaScript 源码，会造成脚本注入风险。优先使用固定脚本和明确的序列化/转义协议；执行来自不可信页面或网络的脚本等同于授予该页面当前 WebView 的脚本执行能力。
+:::
+
+## 网页向宿主发送消息
+
+先注册 Kotlin handler，再由页面调用当前平台的原生 `postMessage` 入口。公共 handler 接收的是 `String`；将 JSON 等结构化数据先序列化，并在宿主侧做 schema、长度和业务权限校验。
+
+```kotlin
+import kotlinx.coroutines.awaitCancellation
+import androidx.compose.runtime.LaunchedEffect
+
+LaunchedEffect(controller) {
+    val messageHandle = controller.bridge.registerWebMessageHandler { payload ->
+        // 例如只接受你的 JSON 事件协议，而不是把 payload 直接当作命令执行。
+        onWebEvent(payload)
+    }
+
+    try {
+        awaitCancellation()
+    } finally {
+        messageHandle.close()
+    }
+}
+```
+
+页面端应依平台选择对应入口。它们是底层原生对象形状，不是 core 统一出的 JavaScript 全局 API：
+
+| 后端 | 网页 JavaScript |
+| --- | --- |
+| Windows JVM / WebView2 | `window.chrome.webview.postMessage("{\"type\":\"completed\"}")` |
+| Linux JVM / WebKitGTK，Apple WebKit | `window.webkit.messageHandlers.wvbridge.postMessage("{\"type\":\"completed\"}")` |
+| AndroidX WebKit | `window._wvbridge.postMessage("{\"type\":\"completed\"}")` |
+
+注册 handler 后才保证原生侧会派发给它。关闭该句柄后，平台提供的 JavaScript 对象可能仍存在，但消息不再投递到这个 handler。
+
+:::note[Android 功能检测]
+Android 的消息监听依赖 AndroidX WebKit `WEB_MESSAGE_LISTENER`；不支持时注册会抛出 `UnsupportedOperationException`。document-start 注入另依赖 `DOCUMENT_START_SCRIPT`。将注册放在 `runCatching` 中，并针对不支持的设备提供降级路径。
+:::
+
+## 为后续页面注册 document-start hook
+
+当网页自己的脚本启动前就必须准备好环境时，使用 document-start hook。例如，在每个后续页面最早阶段写入一个固定的主题标记：
+
+```kotlin
+import kotlinx.coroutines.awaitCancellation
+import androidx.compose.runtime.LaunchedEffect
+
+LaunchedEffect(controller) {
+    val hook = controller.bridge.registerDocumentStartHook(
+        "window.__hostTheme = 'dark';",
+    )
+    try {
+        awaitCancellation()
+    } finally {
+        hook.close()
+    }
+}
+```
+
+该 hook 影响的是**注册之后的页面加载**。如果当前页面已经打开而你也需要立即执行同一段逻辑，应额外调用 `evaluateScript()`；随后通过下一次导航或刷新使 hook 在 document start 生效。平台无法单独移除原生脚本时，库会维护注册表并重建已安装的 document-start 脚本。
+
+## 释放与安全边界
+
+```text
+Compose 界面进入 composition
+        │
+        ├─ registerWebMessageHandler ──> CloseHandle
+        └─ registerDocumentStartHook ──> CloseHandle
+                                            │
+Compose 界面离开 / 功能关闭 ────────────────┘ close()
+```
+
+`CloseHandle.close()` 对调用方应是幂等的；仍应把每个注册的句柄与创建它的 UI/业务生命周期绑定，并在 `finally` 或 `DisposableEffect` 的清理路径中关闭。接口定义可见 [CloseHandle Dokka API](/dokka/core/top.kagg886.wvbridge.bridge/-close-handle/index.html)。
+
+安全上，bridge 是网页与宿主之间的信任边界，而不是认证机制：
+
+- 只对白名单来源或受控内容启用高权限业务协议；消息体必须视为不可信输入。
+- 不要把收到的消息直接映射为文件、账户、支付或任意 JavaScript 操作；先验证事件类型、数据格式和调用上下文。
+- Android 当前原生监听以 `"*"` 作为允许 origin 规则注册，因此尤其应在 handler 内完成来源之外的业务校验；其他后端的 origin、frame 与内容控制器约束由各自原生引擎决定。
+
+需要在 URL 导航阶段限制来源、阻止外链或重定向，请配合使用[拦截器](/zh/interceptor/)；需要更高层的双向协议，请继续到[JavaScript 增强](/zh/javascript-enhancement/)。

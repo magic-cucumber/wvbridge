@@ -1,0 +1,49 @@
+---
+title: wvbridge
+description: 面向 Compose Multiplatform 的宿主平台 WebView Kotlin 友好桥接库。
+template: splash
+hero:
+  tagline: 一套面向 Compose Multiplatform 的 WebView API。
+  actions:
+    - text: 开始使用
+      link: /zh/installation/
+      icon: right-arrow
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+`wvbridge` 用于在 Compose Multiplatform 中接入**宿主平台自带的 WebView**，提供小而统一、对 Kotlin 友好的 common API，用来加载页面、监听 URL 与加载状态变化，并执行基础导航操作。
+
+> 本项目仍处于活跃开发阶段，API 与平台覆盖范围可能发生变化。
+
+<CardGrid>
+	<Card title="Compose Multiplatform" icon="document">
+		在 Android、iOS 与 JVM 桌面端的共享 UI 代码中使用同一套 common API。
+	</Card>
+	<Card title="纯系统 WebView" icon="setting">
+		仅使用宿主平台自带的 WebView 引擎，无需额外嵌入浏览器运行时。
+	</Card>
+	<Card title="统一 JS Bridge" icon="rocket">
+		在所有已支持平台上向网页提供一致的 JavaScript Bridge 对象。
+	</Card>
+	<Card title="极低动态库占用" icon="approve-checkmark">
+		平台运行时动态库约为 100 KB 至 1.5 MB，具体取决于目标平台。
+	</Card>
+</CardGrid>
+
+## 快速使用
+
+```kotlin
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewController
+
+val webViewController = rememberWebViewController("https://example.com")
+
+WebView(
+    controller = webViewController,
+    modifier = Modifier,
+)
+```
+
+继续阅读[安装说明](/zh/installation/)；API 文档可从侧边栏在新标签页打开。

@@ -1,0 +1,121 @@
+---
+title: 快速开始
+description: 在 Compose Multiplatform 中渲染第一个 wvbridge WebView，并了解各平台的布局边界。
+---
+
+import { Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+## 适用场景
+
+应用常常需要在共享 UI 中嵌入一段由 Web 承载的内容：例如帮助中心、活动页、登录回调页，或业务团队独立发布的内容模块。此时页面本身不需要成为一个完整浏览器；Compose 负责应用的栏位、返回入口和状态提示，`WebView` 负责在剩余区域呈现网页。
+
+`wvbridge` 将这个需求抽象成两个对象：**controller** 管理同一个原生 WebView 的状态与操作，`WebView` 则把它渲染进当前 Compose 布局。两个对象都可直接放在 `commonMain`。
+
+## 你将得到什么
+
+<CardGrid>
+	<Card title="共享 UI 入口" icon="document">
+		Android、iOS 与 JVM 桌面端使用同一个 <code>WebView</code> Composable。
+	</Card>
+	<Card title="可观察的页面状态" icon="information">
+		controller 提供当前 URL 与加载状态，适合驱动页面标题或加载指示器。
+	</Card>
+	<Card title="同一实例的后续控制" icon="right-arrow">
+		导航、拦截与 JavaScript 能力都从 controller 继续展开。
+	</Card>
+</CardGrid>
+
+## 最小正确示例
+
+先按[安装](/zh/installation/)完成依赖配置。下面的界面适合“应用中的内容页”：上方保留 Compose 编写的标题，网页占据其余空间。controller 必须在 Composable 中通过 `rememberWebViewController()` 创建；不要在每次重组时自行新建原生 WebView。
+
+<Steps>
+
+1. 创建并记住 controller，同时指定首次显示的地址。
+
+2. 用 `WebView` 渲染该 controller，并为它提供可用的布局尺寸。
+
+</Steps>
+
+```kotlin
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.weight
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import top.kagg886.wvbridge.WebView
+import top.kagg886.wvbridge.rememberWebViewController
+
+@Composable
+fun HelpCenterScreen() {
+    val controller = rememberWebViewController(
+        url = "https://example.com/help",
+    )
+
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            text = "帮助中心",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        WebView(
+            controller = controller,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+```
+
+首次组合时，controller 先创建对应平台的原生视图；视图准备好后，库会加载传入的初始 URL。页面不需要手动调用 `loadUrl()` 来启动这次首屏导航。
+
+:::tip
+将 controller 和 `WebView` 保持在同一段界面生命周期内。`WebView` 离开组合时会释放它所承载的原生视图；若需要跨多个页面复用浏览会话，应先明确该 controller 的 Compose 生命周期。
+:::
+
+## 为应用 UI 接入状态与操作
+
+controller 是 Compose 状态的来源，因此可以用它显示进度，也可以由自己的按钮触发导航。如下示例不是浏览器 UI，而是为内容页提供一个“返回网页上一页”的应用操作：
+
+```kotlin
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import top.kagg886.wvbridge.LoadingState
+
+if (controller.loadingState is LoadingState.Loading) {
+    CircularProgressIndicator()
+}
+
+Button(
+    enabled = controller.navigator.canGoBack,
+    onClick = { controller.navigator.goBack() },
+) {
+    Text("返回网页上一页")
+}
+```
+
+`url` 会保存最近一次尝试加载的顶层地址（包括失败的导航），`loadingState` 则反映原生视图的就绪和加载过程。加载状态的完整生命周期，以及 `navigator`、`bridge` 和 `interceptor` 的职责，请阅读 [controller 导读](/zh/controller/)。
+
+## 平台与布局限制
+
+| 目标 | 底层承载方式 | 布局时应注意 |
+| --- | --- | --- |
+| Android | 系统 `android.webkit.WebView` | 通过 Compose 的 `AndroidView` 接入；为 WebView 分配明确尺寸。 |
+| iOS | `WKWebView` | 通过 Compose 的 UIKit 互操作视图接入；为 WebView 分配明确尺寸。 |
+| JVM 桌面端 | 原生屏上视图，使用 `SwingPanel` 承载 | 不是离屏浏览器画布；不要依赖 Compose/Swing 内容覆盖在网页上方。 |
+
+:::caution[JVM 桌面端不是离屏渲染]
+Windows、Linux 与 macOS 的 JVM 后端直接使用平台原生 WebView（分别为 WebView2、WebKitGTK 和 WebKit）的**屏上**渲染能力。因而 Compose 或 Swing 元素不能可靠地叠放到 WebView 上方，例如浮动按钮、弹窗蒙层和悬浮工具栏不应覆盖网页区域。
+
+将这些控件放在 WebView 之外的布局区域，例如顶部或底部栏；如果产品必须将任意 Compose 内容与浏览器像素自由合成，需要选择支持离屏渲染的 Chromium 方案，这不在 wvbridge 的目标范围内。
+:::
+
+JVM 还需要与 `core` **同版本**的 `platform-*` 原生运行时，并且目前仅支持 Windows x64、Linux x64 与 macOS arm64；配置方法见[安装页的 JVM 运行时说明](/zh/installation/#jvm-运行时)。
+
+## 接下来
+
+- 阅读 [controller 导读](/zh/controller/)：用加载状态驱动 UI，并了解导航、拦截和 JavaScript bridge 的入口。
+- 阅读 [配置 WebViewConfig](/zh/configuration/)：在创建 controller 前设置用户代理和平台特定选项。
+- 阅读基础特性中的导航器、拦截器与 JavaScript 互操作文档，逐步给内容页加入交互能力。
