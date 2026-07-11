@@ -1,47 +1,94 @@
 #include "libs_helpers.h"
+
+#include <exception>
+
 #include <wvbridge/logger.h>
 
-API_EXPORT(void, close0, jlong handle) {
-    LOGGER_I("close0: handle=%lld", (long long)handle);
+#include "webview_lifecycle.h"
 
-    if (handle == 0) {
-        LOGGER_E("close0: null handle, throwing NPE");
-        throw_jni_exception(env, "java/lang/NullPointerException", "handle is null");
-        return;
-    }
-    LOGGER_V("close0: casting handle to WebViewContext");
-    auto *ctx = (WebViewContext *) handle;
-    if (!ctx) {
-        LOGGER_W("close0: ctx is null after cast, aborting");
-        return;
-    }
+API_EXPORT(void, close0, jlong handle, jboolean isInJvmExitProgress) {
+    (void) thiz;
+    const bool jvm_exit = isInJvmExitProgress == JNI_TRUE;
+    auto* ctx = reinterpret_cast<WebViewContext*>(handle);
+    LOGGER_I("close: begin env=%p handle=%lld ctx=%p jvm_exit=%d gtk_initialized=%d",
+             env, static_cast<long long>(handle), ctx, jvm_exit ? 1 : 0,
+             wvbridge::gtk_is_inited() ? 1 : 0);
 
-    LOGGER_V("close0: setting closing flag");
-    ctx->closing.store(true, std::memory_order_release);
+    LOGGER_D("close: phase=claim-context handle=%lld jvm_exit=%d",
+             static_cast<long long>(handle), jvm_exit ? 1 : 0);
+    const wvbridge::CloseTicket ticket = wvbridge::lifecycle_begin_close(ctx, jvm_exit);
+    LOGGER_V("close: ticket owns=%d shutdown=%d active=%zu closing=%zu",
+             ticket.owns_context ? 1 : 0, ticket.shutdown_requested ? 1 : 0,
+             ticket.active_contexts, ticket.closing_contexts);
 
-    LOGGER_V("close0: running destroy on GTK thread");
-    wvbridge::gtk_run_on_thread_sync([&] {
-        x11_ignore_errors([&] {
-            if (ctx->xdisplay && ctx->child_xid != 0) {
-                LOGGER_V("close0: reparenting child_xid=%lu to root", (unsigned long)ctx->child_xid);
-                ::Window root = DefaultRootWindow(ctx->xdisplay);
-                if (root != 0) {
-                    XReparentWindow(ctx->xdisplay, ctx->child_xid, root, 0, 0);
-                    XUnmapWindow(ctx->xdisplay, ctx->child_xid);
-                    XFlush(ctx->xdisplay);
-                }
+    bool gtk_destroyed = false;
+    if (ticket.owns_context) {
+        LOGGER_D("close: phase=destroy-on-gtk-thread ctx=%p child=%lu parent=%lu attached=%d",
+                 ctx, static_cast<unsigned long>(ctx->child_xid),
+                 static_cast<unsigned long>(ctx->parent_xid),
+                 ctx->attached.load(std::memory_order_acquire) ? 1 : 0);
+        try {
+            const bool dispatched = wvbridge::gtk_run_on_thread_sync([&] {
+                LOGGER_V("close.gtk: destroy task entered ctx=%p gtk_thread=%d closing=%d",
+                         ctx, wvbridge::gtk_is_gtk_thread() ? 1 : 0,
+                         ctx->closing.load(std::memory_order_acquire) ? 1 : 0);
+                gtk_destroyed = wvbridge::destroy_webview_on_gtk_thread(ctx);
+                LOGGER_V("close.gtk: destroy task completed ctx=%p destroyed=%d",
+                         ctx, gtk_destroyed ? 1 : 0);
+            });
+            if (!dispatched) {
+                LOGGER_E("close: GTK runtime rejected destroy task ctx=%p jvm_exit=%d",
+                         ctx, jvm_exit ? 1 : 0);
             }
-
-            LOGGER_V("close0: calling destroy_ctx_on_gtk_thread");
-            destroy_ctx_on_gtk_thread(ctx);
-        });
-
-        LOGGER_V("close0: draining pending GTK events");
-        while (g_main_context_pending(nullptr)) {
-            g_main_context_iteration(nullptr, FALSE);
+        } catch (const std::exception& exception) {
+            LOGGER_E("close: GTK destroy threw std::exception ctx=%p error=%s",
+                     ctx, exception.what());
+        } catch (...) {
+            LOGGER_E("close: GTK destroy threw unknown exception ctx=%p", ctx);
         }
-    });
 
-    LOGGER_V("close0: deleting ctx");
-    delete ctx;
+        LOGGER_D("close: phase=release-jvm-global-refs ctx=%p gtk_destroyed=%d env=%p",
+                 ctx, gtk_destroyed ? 1 : 0, env);
+        // This deliberately runs on the ShutdownHook/native caller thread. The
+        // GTK thread must never attach to a VM that is already shutting down.
+        wvbridge::release_context_jvm_references(env, ctx);
+
+        LOGGER_D("close: phase=delete-native-context ctx=%p gtk_destroyed=%d",
+                 ctx, gtk_destroyed ? 1 : 0);
+        if (gtk_destroyed) {
+            delete ctx;
+            ctx = nullptr;
+            LOGGER_V("close: native context deleted handle=%lld", static_cast<long long>(handle));
+        } else {
+            // A still-live GObject may retain ctx as signal user_data. Leaking
+            // this tiny native holder is safer than introducing a shutdown UAF;
+            // ordinary operation never reaches this branch.
+            LOGGER_E("close: native context intentionally retained because GTK destruction did not complete ctx=%p handle=%lld",
+                     ctx, static_cast<long long>(handle));
+        }
+    } else if (handle == 0) {
+        if (jvm_exit) {
+            LOGGER_V("close: shutdown notification has no live handle; lifecycle will still evaluate GTK stop");
+        } else {
+            LOGGER_W("close: normal close received null handle; nothing to destroy");
+        }
+    } else {
+        LOGGER_W("close: stale, duplicate, or foreign handle ignored handle=%lld ctx=%p",
+                 static_cast<long long>(handle), ctx);
+    }
+
+    LOGGER_D("close: phase=finish-lifecycle handle=%lld", static_cast<long long>(handle));
+    const bool stop_gtk = wvbridge::lifecycle_finish_close(ticket);
+    LOGGER_V("close: lifecycle finished handle=%lld stop_gtk=%d gtk_destroyed=%d",
+             static_cast<long long>(handle), stop_gtk ? 1 : 0, gtk_destroyed ? 1 : 0);
+
+    if (stop_gtk) {
+        LOGGER_I("close: phase=stop-gtk-runtime reason=jvm-exit-all-contexts-closed");
+        wvbridge::gtk_stop();
+        LOGGER_I("close: GTK runtime stopped and joined");
+    }
+
+    LOGGER_I("close: complete handle=%lld jvm_exit=%d owned=%d gtk_destroyed=%d stopped_gtk=%d",
+             static_cast<long long>(handle), jvm_exit ? 1 : 0,
+             ticket.owns_context ? 1 : 0, gtk_destroyed ? 1 : 0, stop_gtk ? 1 : 0);
 }

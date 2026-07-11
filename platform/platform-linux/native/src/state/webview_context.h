@@ -21,12 +21,15 @@ struct WebViewContext {
     ::Window parent_xid = 0;
     ::Window child_xid = 0;
     ::Display *xdisplay = nullptr;
+    GdkDisplay *gdk_display = nullptr;          // borrowed; owned by GTK runtime
+    GdkWindow *foreign_parent_window = nullptr; // owned reference
 
     GtkWidget *window = nullptr;
     WebKitWebView *webview = nullptr;
     wvbridge::WebViewEvents* events = nullptr;
 
     std::atomic_bool closing{false};
+    std::atomic_bool attached{false};
 
     gulong window_button_press_handler_id = 0;
     gulong webview_button_press_handler_id = 0;

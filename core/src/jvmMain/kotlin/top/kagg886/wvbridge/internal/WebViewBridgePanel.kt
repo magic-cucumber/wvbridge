@@ -54,21 +54,7 @@ internal class WebViewBridgePanel(
         if (jvmTarget == JvmTarget.LINUX) { //linux should stop gtk thread when closing application
             isFocusable = true
             Runtime.getRuntime().addShutdownHook(Thread {
-                close()
-            })
-            addFocusListener(object : FocusAdapter() {
-                override fun focusGained(e: FocusEvent) {
-                    if (handle != 0L) {
-                        requestFocus0(handle)
-                    }
-                }
-            })
-            addMouseListener(object : MouseAdapter() {
-                override fun mousePressed(e: MouseEvent) {
-                    if (handle != 0L) {
-                        requestFocus0(handle)
-                    }
-                }
+                close(null, isInJvmExitProgress = true)
             })
         }
         addComponentListener(object : ComponentAdapter() {
@@ -203,9 +189,6 @@ internal class WebViewBridgePanel(
                     TAG,
                     "addNotify: update w=$width h=$height x=${locationOnScreen.x} y=${locationOnScreen.y}"
                 )
-                if (jvmTarget == JvmTarget.LINUX && isFocusOwner) {
-                    requestFocus0(handle)
-                }
                 revalidate()
                 repaint()
             }
@@ -273,28 +256,42 @@ internal class WebViewBridgePanel(
     }
 
     private val closeLock = ReentrantLock()
-    override fun close(): Unit = close(null)
+    override fun close(): Unit = close(null, isInJvmExitProgress = false)
 
-    internal fun close(cause: String?) = closeLock.withLock {
+    internal fun close(cause: String?) = close(cause, isInJvmExitProgress = false)
+
+    private fun close(cause: String?, isInJvmExitProgress: Boolean) = closeLock.withLock {
         val handle = handle
         if (handle == 0L) {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: already closed, handle=0")
+            LoggerReceiver.log(
+                LoggerReceiver.Level.VERBOSE,
+                TAG,
+                "close: already closed, handle=0, jvmExit=$isInJvmExitProgress"
+            )
+            if (isInJvmExitProgress) {
+                close0(0L, true)
+            }
             return@withLock
         }
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "close: handle=$handle cause=$cause")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.INFO,
+            TAG,
+            "close: handle=$handle cause=$cause jvmExit=$isInJvmExitProgress"
+        )
         NativeBridge.unregister(this)
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: native bridge unregistered")
         this.handle = 0L
-        close0(handle)
+        close0(handle, isInJvmExitProgress)
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "close: close0 invoked, notifying listeners")
-        closeListener.forEach { it.accept(cause) }
+        if (!isInJvmExitProgress) {
+            closeListener.forEach { it.accept(cause) }
+        }
     }
 
     // --------------init and close--------------
     private external fun initAndAttach(platformSetting: Any): Long
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
-    private external fun requestFocus0(webview: Long)
-    private external fun close0(webview: Long)
+    private external fun close0(webview: Long, isInJvmExitProgress: Boolean)
 
     // ------------navigate function------------
     private external fun loadUrl(webview: Long, url: String)

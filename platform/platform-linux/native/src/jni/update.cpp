@@ -34,17 +34,22 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
         int tw = cw;
         int th = ch;
 
-        if (ctx->xdisplay && ctx->parent_xid != 0) {
-            LOGGER_V("update: querying parent_xid geometry");
-            unsigned int pw = 0, ph = 0;
-            ::Window root = 0;
-            int rx = 0, ry = 0;
-            unsigned int bw = 0, depth = 0;
-            if (XGetGeometry(ctx->xdisplay, ctx->parent_xid, &root, &rx, &ry, &pw, &ph, &bw, &depth) != 0) {
+        if (ctx->foreign_parent_window && !gdk_window_is_destroyed(ctx->foreign_parent_window)) {
+            LOGGER_V("update: querying tracked foreign parent geometry window=%p xid=%lu",
+                     ctx->foreign_parent_window, (unsigned long)ctx->parent_xid);
+            int pw = 0;
+            int ph = 0;
+            gdk_window_get_geometry(ctx->foreign_parent_window, nullptr, nullptr, &pw, &ph);
+            if (pw > 0 && ph > 0) {
                 tw = clamp_dim((jint) pw);
                 th = clamp_dim((jint) ph);
-                LOGGER_V("update: parent geometry pw=%u ph=%u -> tw=%d th=%d", pw, ph, tw, th);
+                LOGGER_V("update: parent geometry pw=%d ph=%d -> tw=%d th=%d", pw, ph, tw, th);
+            } else {
+                LOGGER_W("update: tracked parent returned invalid geometry pw=%d ph=%d; using requested size", pw, ph);
             }
+        } else if (ctx->foreign_parent_window) {
+            LOGGER_W("update: tracked AWT parent is destroyed; skipping native resize ctx=%p", ctx);
+            return;
         }
 
         if (ctx->webview) {
@@ -54,13 +59,15 @@ API_EXPORT(void, update, jlong handle, jint w, jint h, jint x, jint y) {
             gtk_widget_queue_resize(GTK_WIDGET(ctx->webview));
         }
 
-        if (ctx->xdisplay && ctx->child_xid != 0) {
-            LOGGER_V("update: moving/resizing child_xid to %ux%u", (unsigned int)tw, (unsigned int)th);
-            x11_ignore_errors([&] {
-                XMoveResizeWindow(ctx->xdisplay, ctx->child_xid, 0, 0,
-                                  (unsigned int) tw, (unsigned int) th);
-                XFlush(ctx->xdisplay);
-            });
+        if (ctx->window) {
+            GdkWindow* child = gtk_widget_get_window(ctx->window);
+            if (child && !gdk_window_is_destroyed(child)) {
+                LOGGER_V("update: moving/resizing tracked child=%p xid=%lu to %dx%d",
+                         child, (unsigned long)ctx->child_xid, tw, th);
+                gdk_window_move_resize(child, 0, 0, tw, th);
+            } else {
+                LOGGER_W("update: child GdkWindow unavailable or destroyed child=%p ctx=%p", child, ctx);
+            }
         }
     });
 }
