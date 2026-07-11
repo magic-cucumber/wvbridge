@@ -91,4 +91,15 @@ API_EXPORT(void, close0, jlong handle, jboolean isInJvmExitProgress) {
     LOGGER_I("close: complete handle=%lld jvm_exit=%d owned=%d gtk_destroyed=%d stopped_gtk=%d",
              static_cast<long long>(handle), jvm_exit ? 1 : 0,
              ticket.owns_context ? 1 : 0, gtk_destroyed ? 1 : 0, stop_gtk ? 1 : 0);
+
+    if (jvm_exit && stop_gtk) {
+        // JNI_OnUnload is executed by HotSpot's VM Thread while VM_Exit owns a
+        // safepoint. Joining a logger thread that is attached to the JVM from
+        // there deadlocks: the VM Thread waits in pthread_join while the logger
+        // waits for the safepoint to end. Stop and join it here instead, while
+        // this Java shutdown-hook thread is still allowed to execute Java/JNI.
+        // logger_on_unload() is idempotent, so the later JNI_OnUnload call is a
+        // non-blocking no-op. No LOGGER_* call is allowed after this point.
+        logger_on_unload();
+    }
 }
