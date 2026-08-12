@@ -1,0 +1,138 @@
+---
+title: Changelog
+description: Release history and notable changes for wvbridge.
+---
+
+This page collects the published release notes for `wvbridge`. Each version links to its original [GitHub Release](https://github.com/magic-cucumber/wvbridge/releases).
+
+## 0.0.7 — 2026-08-12
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.7)
+
+### Bug fixes
+
+- Fixed JVM WebView integration for Compose 1.12.0-alpha01 and newer.
+- Prevented deferred WebView updates from using an invalid native handle after the WebView had been closed.
+
+## 0.0.6 — 2026-07-20
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.6)
+
+### Bug fixes
+
+- Improved WebView embedding and application shutdown stability on Linux X11, preventing X11 errors and shutdown deadlocks.
+
+### Features
+
+- Added a bilingual documentation site with installation, quick-start, Controller, configuration, navigation, interception, and JavaScript interoperability guides, plus integrated API reference documentation. The README now links to the site.
+
+### Other changes
+
+- Released `core` 0.0.6 and updated all desktop platform artifacts to 0.0.5.
+
+### Breaking changes
+
+- None.
+
+## 0.0.5 — 2026-07-10
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.5)
+
+### Bug fixes
+
+- Fixed a possible ANR when exiting the macOS JVM WebView.
+- Fixed WebView auto-close behavior.
+- Fixed macOS/Linux native boolean value mapping to improve JavaScript result parsing consistency.
+- Improved Android WebView profile support and runtime capability checks.
+
+### Features
+
+- Added `WebViewConfig` for passing configuration when creating a WebView.
+- Added custom User-Agent support.
+- Added platform-specific configuration:
+  - Android supports passing an AndroidX WebKit `Profile`.
+  - iOS/macOS support selecting a persistent or non-persistent `WebsiteDataStore`.
+  - JVM desktop supports configuring the Windows WebView2 data directory, Linux WebKitGTK data/cache directories, and macOS WebKit data store mode.
+- Added the `Interceptor` navigation interceptor API, allowing top-level URL navigations to be allowed, rejected, redirected, or ignored.
+- Exposed `interceptor` on `WebViewController`, so WebView behavior can be managed alongside the existing `navigator` and `bridge` APIs.
+
+### Breaking changes
+
+- `CloseHandle` moved from `top.kagg886.wvbridge.bridge` to `top.kagg886.wvbridge.util`; consumers must update their imports.
+- `rememberWebViewController` now accepts a `config: WebViewConfig = WebViewConfig()` parameter. Existing calls keep the same default behavior; custom WebView creation settings should be passed through this parameter.
+
+## 0.0.4 — 2026-06-26
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.4)
+
+### Bug fixes
+
+- Fixed iOS build issues and enabled the missing WebKit `postMessage` path used by the JavaScript bridge.
+- Fixed JVM WebView close ordering by closing the native WebView before Swing removal completes.
+- Fixed native JVM startup stability by addressing a JNI load crash and adding safer native exception handling.
+- Fixed JVM backend recovery after native WebView fatal errors by notifying Kotlin and recreating the panel when needed.
+- Updated Linux desktop support to use the newer WebKitGTK 4.1 APIs instead of deprecated Linux WebKit APIs.
+- Improved native lifecycle cleanup across Windows, Linux, and macOS by splitting JNI operations into focused entry points and unregistering event handlers explicitly.
+- Fixed WebView2 process failure handling by reporting fatal backend failures to the JVM layer.
+
+### Features
+
+- Added a new `jsbridge` artifact with typed JavaScript evaluation, typed message packets, native-to-JavaScript events, JavaScript-to-native calls, and request/reply APIs.
+- Added a common `JavaScriptBridge` API to `core` for evaluating scripts, registering document-start hooks, and receiving raw WebView messages.
+- Added `CloseHandle` and `WebMessageConsumer` common bridge primitives for cancellable bridge registrations.
+- Added platform implementations of the JavaScript bridge for Android, iOS, Windows JVM, Linux JVM, and macOS JVM.
+- Added AndroidX WebKit integration for document-start script injection and `WEB_MESSAGE_LISTENER` support.
+- Added native desktop support for script evaluation, document-start hooks, and web-message handlers through per-platform JNI bindings.
+- Added process-wide logging APIs through `LoggerReceiver` and native logger forwarding from desktop backends.
+- Added typed `JSValue` models and conversion helpers for JavaScript `undefined`, `null`, serializable JSON values, primitive script objects, and JavaScript errors.
+- Added suspendable message handlers with reply support so JavaScript can call native code and receive a result.
+- Added `postMessageAndReceiveResult` so native code can dispatch a typed event to JavaScript and await a callback result with timeout cleanup.
+- Added Maven Central badges and updated documentation for `core`, `jsbridge`, and platform runtime artifacts.
+- Added feature support tables to the English and Chinese README files and module docs.
+- Added a richer Compose sample app with browser controls, JavaScript evaluation dialogs, message bridge screens, platform-specific dialogs, and custom scrollbars.
+- Added publication configuration for the new `jsbridge` module and bumped Dokka and dependency metadata.
+
+### Breaking changes
+
+- Renamed the main state API from `WebViewState` to `WebViewController`.
+- Renamed `rememberWebViewState` to `rememberWebViewController`.
+- Changed the `WebView` composable parameter from `state` to `controller`.
+- Renamed the loading state holder from `state.state` to `controller.loadingState`.
+- Replaced platform-specific `state.*.kt` implementations with `controller.*.kt` implementations.
+- Changed `WebViewNavigator.goForward(url: String)` to `goForward()` because the URL parameter was unused.
+- Added `WebViewController.bridge`, so consumers now access JavaScript APIs through the remembered controller instead of a separate state object.
+- Updated sample and documentation code to use the controller-based API, so existing code written against 0.0.3 must update imports, variable names, and `WebView` arguments.
+
+## 0.0.3 — 2026-06-21
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.3)
+
+### Other changes
+
+- Downgraded Kotlin to 2.3.10.
+
+## 0.0.2 — 2026-06-18
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.2)
+
+### Changes
+
+- `WebViewState.url` now represents the most recently attempted top-level URL, even when navigation fails.
+- JVM WebView state now updates the URL as soon as page loading starts.
+- Clarified that `refresh()` reloads the most recently loaded page. Use `loadUrl(state.url)` to retry a failed navigation.
+- Refactored Java/JNI callback handling into a shared native module across Linux, macOS, and Windows.
+- Improved native callback lifecycle, thread attachment, argument conversion, and exception handling.
+- Upgraded Kotlin to 2.4.0, Android Gradle Plugin to 8.13.2, and Compose Multiplatform to 1.10.3.
+- Core releases now automatically create a GitHub Release with generated release notes.
+
+### Breaking behavior change
+
+- `WebViewState.url` may differ from the currently displayed page after a failed navigation because it retains the attempted URL.
+
+## 0.0.1 — 2026-03-31
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.1)
+
+### Bug fixes
+
+- Fixed the macOS rpath.

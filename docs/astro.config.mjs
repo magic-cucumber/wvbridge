@@ -25,6 +25,7 @@ export default defineConfig({
 					translations: { 'zh-CN': '文档' },
 					items: [
 						{ label: 'Welcome', slug: '', translations: { 'zh-CN': '欢迎' } },
+						{ label: 'Changelog', link: 'changelog', translations: { 'zh-CN': '更新日志' } },
 						{ label: 'Installation', slug: 'installation', translations: { 'zh-CN': '安装' } },
 						{ label: 'Quick start', link: 'quick-start', translations: { 'zh-CN': '快速开始' } },
 						{ label: 'Controller', link: 'controller', translations: { 'zh-CN': 'Controller 导读' } },

@@ -1,0 +1,138 @@
+---
+title: 更新日志
+description: wvbridge 的版本历史与重要变更。
+---
+
+本页汇总 `wvbridge` 已发布的版本说明。每个版本都附有对应的 [GitHub Release](https://github.com/magic-cucumber/wvbridge/releases) 原文链接。
+
+## 0.0.7 — 2026-08-12
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.7)
+
+### 错误修复
+
+- 修复 JVM WebView 与 Compose 1.12.0-alpha01 及更高版本的集成问题。
+- 防止 WebView 已关闭后，延迟执行的 WebView 更新继续使用无效的 native handle。
+
+## 0.0.6 — 2026-07-20
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.6)
+
+### 错误修复
+
+- 改进 Linux X11 上的 WebView 嵌入和应用退出稳定性，避免 X11 错误与关闭死锁。
+
+### 功能新增
+
+- 新增双语文档站，包含安装、快速开始、Controller、配置、导航、拦截和 JavaScript 互操作指南，并集成 API 参考文档；README 现在会链接到该文档站。
+
+### 其他变更
+
+- 发布 `core` 0.0.6，并将所有桌面平台 artifact 更新至 0.0.5。
+
+### 破坏性变更
+
+- 无。
+
+## 0.0.5 — 2026-07-10
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.5)
+
+### 错误修复
+
+- 修复 macOS JVM WebView 退出时可能出现的 ANR。
+- 修复 WebView 自动关闭行为。
+- 修复 macOS/Linux native 布尔值映射，提升 JavaScript 结果解析的一致性。
+- 改进 Android WebView profile 支持和运行时能力检查。
+
+### 功能新增
+
+- 新增 `WebViewConfig`，用于在创建 WebView 时传入配置。
+- 新增自定义 User-Agent 支持。
+- 新增平台相关配置：
+  - Android 支持传入 AndroidX WebKit `Profile`。
+  - iOS/macOS 支持选择持久化或非持久化的 `WebsiteDataStore`。
+  - JVM 桌面支持配置 Windows WebView2 数据目录、Linux WebKitGTK 数据/缓存目录，以及 macOS WebKit 数据存储模式。
+- 新增 `Interceptor` 导航拦截器 API，可以允许、拒绝、重定向或忽略顶层 URL 导航。
+- 在 `WebViewController` 上暴露 `interceptor`，可以将 WebView 行为与现有的 `navigator`、`bridge` API 一起管理。
+
+### 破坏性变更
+
+- `CloseHandle` 从 `top.kagg886.wvbridge.bridge` 移动到 `top.kagg886.wvbridge.util`；使用方需要更新 import。
+- `rememberWebViewController` 新增 `config: WebViewConfig = WebViewConfig()` 参数。现有调用保持相同的默认行为；需要自定义 WebView 创建设置时，应通过该参数传入。
+
+## 0.0.4 — 2026-06-26
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.4)
+
+### 错误修复
+
+- 修复 iOS 构建问题，并启用 JavaScript bridge 使用的缺失 WebKit `postMessage` 路径。
+- 修复 JVM WebView 关闭顺序：在 Swing 移除完成前先关闭 native WebView。
+- 修复 JNI 加载崩溃，并增加更安全的 native 异常处理，提升 JVM native 启动稳定性。
+- 修复 native WebView 发生致命错误后的 JVM 后端恢复流程：通知 Kotlin 并重新创建 panel。
+- Linux 桌面支持改用较新的 WebKitGTK 4.1 API，替代已弃用的 Linux WebKit API。
+- 改进 Windows、Linux 和 macOS 的 native 生命周期清理，将 JNI 操作拆分为职责更清晰的入口，并显式注销事件处理器。
+- 改进 WebView2 进程失败处理，将 native 后端致命错误报告给 JVM 层。
+
+### 功能新增
+
+- 新增 `jsbridge` artifact，提供类型化 JavaScript 执行、类型化消息包、native 到 JavaScript 事件、JavaScript 到 native 调用，以及 request/reply API。
+- 在 `core` 中新增通用 `JavaScriptBridge` API，用于执行脚本、注册 document-start hook 和接收原始 WebView 消息。
+- 新增通用 bridge 基础类型 `CloseHandle` 与 `WebMessageConsumer`，支持可取消的 bridge 注册。
+- 为 Android、iOS、Windows JVM、Linux JVM 和 macOS JVM 添加 JavaScript bridge 平台实现。
+- 新增 AndroidX WebKit 集成，支持 document-start 脚本注入和 `WEB_MESSAGE_LISTENER`。
+- 通过各平台 JNI binding，新增桌面端脚本执行、document-start hook 和 web-message handler 支持。
+- 通过 `LoggerReceiver` 及桌面后端的 native logger 转发，新增进程级日志 API。
+- 新增类型化 `JSValue` 模型和转换工具，支持 JavaScript `undefined`、`null`、可序列化 JSON 值、基本脚本对象和 JavaScript 错误。
+- 新增支持 reply 的挂起式消息处理器，使 JavaScript 可以调用 native 代码并接收结果。
+- 新增 `postMessageAndReceiveResult`，使 native 代码可以向 JavaScript 派发类型化事件，并在带超时清理的情况下等待回调结果。
+- 为 `core`、`jsbridge` 和平台 runtime artifact 添加 Maven Central badge，并更新相关文档。
+- 为英文和中文 README 以及模块文档添加功能支持表。
+- 丰富 Compose sample app，新增浏览器控制、JavaScript 执行对话框、消息 bridge 页面、平台特定对话框和自定义滚动条。
+- 为新的 `jsbridge` 模块添加发布配置，并更新 Dokka 与依赖元数据。
+
+### 破坏性变更
+
+- 主状态 API 从 `WebViewState` 重命名为 `WebViewController`。
+- `rememberWebViewState` 重命名为 `rememberWebViewController`。
+- `WebView` composable 参数从 `state` 改为 `controller`。
+- loading 状态持有者从 `state.state` 重命名为 `controller.loadingState`。
+- 使用 `controller.*.kt` 实现替代平台特定的 `state.*.kt` 实现。
+- `WebViewNavigator.goForward(url: String)` 改为 `goForward()`，因为 URL 参数没有被使用。
+- 新增 `WebViewController.bridge`，使用方现在通过 remember 得到的 controller 访问 JavaScript API，不再使用独立的 state 对象。
+- sample 和文档代码已切换到 controller API；从 `0.0.3` 升级的使用方需要更新 import、变量名和 `WebView` 参数。
+
+## 0.0.3 — 2026-06-21
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.3)
+
+### 其他变更
+
+- 将 Kotlin 降级至 2.3.10。
+
+## 0.0.2 — 2026-06-18
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.2)
+
+### 变更
+
+- `WebViewState.url` 现在表示最近一次尝试的顶层 URL，即使导航失败也如此。
+- JVM WebView state 现在会在页面开始加载时立即更新 URL。
+- 明确 `refresh()` 会重新加载最近加载的页面；要重试失败的导航，请使用 `loadUrl(state.url)`。
+- 将 Java/JNI callback 处理重构到 Linux、macOS 和 Windows 共用的 native 模块中。
+- 改进 native callback 生命周期、线程附加、参数转换和异常处理。
+- 升级 Kotlin 至 2.4.0、Android Gradle Plugin 至 8.13.2、Compose Multiplatform 至 1.10.3。
+- Core 发布现在会自动创建带有生成式更新说明的 GitHub Release。
+
+### 破坏性行为变更
+
+- 导航失败后，`WebViewState.url` 可能与当前显示的页面不同，因为它会保留尝试加载的 URL。
+
+## 0.0.1 — 2026-03-31
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.1)
+
+### 错误修复
+
+- 修复 macOS rpath。
