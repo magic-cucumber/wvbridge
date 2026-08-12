@@ -110,7 +110,7 @@ public actual fun WebView(controller: WebViewController<*>, modifier: Modifier) 
         }
     }
 
-    SwingPanel(
+    SupportSwingPanel(
         factory = { controller.instance },
         modifier = modifier,
     )
