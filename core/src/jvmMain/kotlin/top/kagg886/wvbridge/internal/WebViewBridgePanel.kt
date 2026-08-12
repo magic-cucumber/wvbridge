@@ -183,6 +183,14 @@ internal class WebViewBridgePanel(
             initialize()
             LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "addNotify: initialize callback invoked")
             SwingUtilities.invokeLater {
+                if (handle == 0L) {
+                    LoggerReceiver.log(
+                        LoggerReceiver.Level.WARN,
+                        TAG,
+                        "addNotify: deferred update skipped because WebView was already closed before the EDT callback ran, handle=0"
+                    )
+                    return@invokeLater
+                }
                 update(handle, width, height, locationOnScreen.x, locationOnScreen.y)
                 LoggerReceiver.log(
                     LoggerReceiver.Level.VERBOSE,
