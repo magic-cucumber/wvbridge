@@ -15,6 +15,8 @@ import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
 import top.kagg886.wvbridge.JvmNavigationInterceptor
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.cookie.Cookie
+import top.kagg886.wvbridge.internal.cookie.StructedCookie
 import top.kagg886.wvbridge.internal.listener.NativeBridge
 import top.kagg886.wvbridge.util.LoggerReceiver
 
@@ -296,6 +298,23 @@ internal class WebViewBridgePanel(
         }
     }
 
+    internal fun put(uri: String, cookie: Cookie) {
+        require(cookie is StructedCookie) { "cookie must be a StructedCookie" }
+        putCookie(handle, uri, cookie)
+    }
+
+    internal fun remove(uri: String, cookie: Cookie) {
+        require(cookie is StructedCookie) { "cookie must be a StructedCookie" }
+        removeCookie(handle, uri, cookie)
+    }
+
+    internal fun clearAll() {
+        clearAllCookies(handle)
+    }
+
+    internal fun all(uri: String): List<StructedCookie> = allCookies(handle, uri).asList()
+
+
     // --------------init and close--------------
     private external fun initAndAttach(platformSetting: Any): Long
     private external fun update(webview: Long, w: Int, h: Int, x: Int, y: Int)
@@ -313,6 +332,12 @@ internal class WebViewBridgePanel(
     private external fun registerWebMessageHandler(webview: Long, callback: WebMessageConsumer): Long
     private external fun unregisterWebMessageHandler(webview: Long, handlerId: Long)
 
+    // ------------cookie manager------------
+
+    private external fun putCookie(webview: Long, uri: String, cookie: StructedCookie)
+    private external fun removeCookie(webview: Long, uri: String, cookie: StructedCookie)
+    private external fun clearAllCookies(webview: Long)
+    private external fun allCookies(webview: Long, uri: String): Array<StructedCookie>
 
     @Suppress("UnsafeDynamicallyLoadedCode")
     internal companion object {
