@@ -70,9 +70,12 @@ internal object NativeBridge {
     }
 
     @JvmStatic
-    private fun onNativeLoggerPostedCallback(level: String, tag: String, message: String): Unit = LoggerReceiver.log(
-        LoggerReceiver.Level.valueOf(level), tag, message
+    private fun onNativeLoggerPostedCallback(level: Int, tag: String, message: String): Unit = LoggerReceiver.log(
+        LoggerReceiver.Level.from(level), tag, message
     )
 
     private const val TAG = "NativeBridge"
+
+    @JvmStatic
+    external fun setMinLevel(level: Int)
 }

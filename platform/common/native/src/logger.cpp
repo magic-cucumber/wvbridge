@@ -3,6 +3,7 @@
 #include "listener_support.h"
 #include "wvbridge/java_runtime.h"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
@@ -19,7 +20,7 @@
 namespace {
 
 struct LoggerMessage {
-    std::string level;
+    uint8_t level;
     std::string tag;
     std::string message;
 };
@@ -30,6 +31,7 @@ std::mutex g_logger_thread_mutex;
 std::mutex g_logger_queue_mutex;
 std::condition_variable g_logger_queue_changed;
 std::deque<LoggerMessage> g_logger_queue;
+std::atomic<uint8_t> g_logger_min_level {2};
 bool g_logger_shutdown = true;
 bool g_logger_cleanup_registered = false;
 
@@ -139,20 +141,24 @@ void post_logger_to_jvm(JNIEnv* env, const LoggerMessage& message) {
         env,
         g_logger_callback,
         "onNativeLoggerPostedCallback",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        "(ILjava/lang/String;Ljava/lang/String;)V",
         &callback_class
     );
     if (method == nullptr || callback_class == nullptr) return;
 
-    jstring level = new_jvm_utf8_string(env, message.level);
     jstring tag = new_jvm_utf8_string(env, message.tag);
     jstring text = new_jvm_utf8_string(env, message.message);
-    if (level != nullptr && tag != nullptr && text != nullptr) {
-        env->CallStaticVoidMethod(callback_class, method, level, tag, text);
+    if (tag != nullptr && text != nullptr) {
+        env->CallStaticVoidMethod(
+            callback_class,
+            method,
+            static_cast<jint>(message.level),
+            tag,
+            text
+        );
         clear_jni_exception(env);
     }
 
-    if (level != nullptr) env->DeleteLocalRef(level);
     if (tag != nullptr) env->DeleteLocalRef(tag);
     if (text != nullptr) env->DeleteLocalRef(text);
 }
@@ -224,11 +230,15 @@ void logger_loop() {
 } // namespace
 
 extern "C" void notify_jvm_logger(
-    const char* level,
+    const uint8_t level,
     const char* tag,
     const char* format,
     ...
 ) {
+    if (level < g_logger_min_level.load(std::memory_order_relaxed)) {
+        return;
+    }
+
     va_list args;
     va_start(args, format);
     std::string message = format_logger_message(format, args);
@@ -240,12 +250,30 @@ extern "C" void notify_jvm_logger(
             return;
         }
         g_logger_queue.push_back(LoggerMessage {
-            level != nullptr ? level : "",
+            level,
             tag != nullptr ? tag : "",
             std::move(message)
         });
     }
     g_logger_queue_changed.notify_one();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_top_kagg886_wvbridge_internal_listener_NativeBridge_setMinLevel(
+    JNIEnv* env,
+    jclass,
+    jint level
+) {
+    if (level < 0 || level > 5) {
+        jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+        if (exception_class != nullptr) {
+            env->ThrowNew(exception_class, "logger level must be between 0 and 5");
+            env->DeleteLocalRef(exception_class);
+        }
+        return;
+    }
+
+    g_logger_min_level.store(static_cast<uint8_t>(level), std::memory_order_relaxed);
 }
 
 extern "C" const char* logger_location_tag(const char* file, int line) {

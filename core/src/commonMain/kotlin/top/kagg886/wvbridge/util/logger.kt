@@ -1,5 +1,9 @@
 package top.kagg886.wvbridge.util
 
+import top.kagg886.wvbridge.util.LoggerReceiver.Companion.log
+import top.kagg886.wvbridge.util.LoggerReceiver.Companion.register
+
+
 /**
  * Receives log messages emitted by the bridge runtime.
  *
@@ -12,24 +16,29 @@ public fun interface LoggerReceiver {
     /**
      * Severity of a log message.
      */
-    public enum class Level {
+    public enum class Level(public val code: Int) {
         /** Detailed diagnostic output. */
-        VERBOSE,
+        VERBOSE(0),
 
         /** Debug information useful during development. */
-        DEBUG,
+        DEBUG(1),
 
         /** General informational messages. */
-        INFO,
+        INFO(2),
 
         /** Potentially problematic state that does not stop execution. */
-        WARN,
+        WARN(3),
 
         /** Error state reported by the runtime. */
-        ERROR,
+        ERROR(4),
 
         /** Assertion or unrecoverable failure state. */
-        ASSERT
+        ASSERT(5);
+
+        public companion object {
+            public fun from(code: Int): Level =
+                entries.find { it.code == code } ?: throw IllegalArgumentException("no such code: $code")
+        }
     }
 
     /**
@@ -46,6 +55,7 @@ public fun interface LoggerReceiver {
      */
     public companion object {
         private val receivers = mutableSetOf<LoggerReceiver>()
+        internal var minLevel = Level.INFO
 
 
         /**
@@ -73,8 +83,13 @@ public fun interface LoggerReceiver {
          * @param tag component or module that produced the message.
          * @param message formatted message text.
          */
-        public fun log(level: Level, tag: String, message: String): Unit = receivers.forEach {
-            it.onLoggerReceived(level, tag, message)
+        public fun log(level: Level, tag: String, message: String) {
+            if (minLevel > level) return
+            receivers.forEach {
+                it.onLoggerReceived(level, tag, message)
+            }
         }
     }
 }
+
+public expect fun LoggerReceiver.Companion.setMinLevel(level: LoggerReceiver.Level)
