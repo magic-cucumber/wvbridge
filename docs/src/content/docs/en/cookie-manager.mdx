@@ -1,0 +1,175 @@
+---
+title: Cookie manager
+description: Read cookies from the same native WebView data store and modify cookie attributes through platform impls.
+---
+
+Pages embedded in a WebView often depend on login state, experiment buckets, or session identifiers. `CookieManager` is the cookie view attached to the current `WebViewController`: it reads cookies visible to a target URL from the same native WebView, profile, or website data store. It does not parse the page's `document.cookie` string.
+
+See the complete [CookieManager API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.cookie/-cookie-manager/index.html) and [Cookie API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.cookie/-cookie/index.html).
+
+## On this page
+
+- [Read cookies for a site](#read-cookies-for-a-site)
+- [What the result means](#what-the-result-means)
+- [Platform mapping](#platform-mapping)
+- [Read cookie attributes](#read-cookie-attributes)
+- [Modify cookie attributes](#modify-cookie-attributes)
+- [Boundaries](#boundaries)
+
+## Read cookies for a site
+
+Get `cookies` from the controller and query with the target request URL. The returned set is a snapshot; later navigation, redirects, JavaScript writes, or native store changes do not update an earlier result.
+
+```kotlin
+val cookies = controller.cookies.get("https://example.com/account")
+
+cookies.forEach { cookie ->
+    println("${cookie.name}=${cookie.value}")
+}
+```
+
+In Compose, read cookies after page completion, a user action, or an explicit refresh in a debug panel. Some platforms bridge asynchronous native cookie APIs into this synchronous API, so do not treat reads as pure in-memory lookups.
+
+```kotlin
+LaunchedEffect(controller.loadingState) {
+    if (controller.loadingState is LoadingState.LoadingEnd) {
+        val sessionCookies = controller.cookies.get(controller.url)
+        // Read the name/value pairs your page protocol needs.
+    }
+}
+```
+
+:::tip[Query with a full URL]
+Cookie matching depends on host, path, `secure`, and other attributes. Pass a complete `http://` or `https://` URL so the native backend can select cookies with request-like semantics.
+:::
+
+## What the result means
+
+The common `Cookie` contract only guarantees `name` and `value`. Browser engines expose additional cookie attributes differently, so shared business logic should prefer those two fields.
+
+| Member | Meaning |
+| --- | --- |
+| `Cookie.name` | Cookie name reported by the native WebView store. |
+| `Cookie.value` | Cookie value reported by the native WebView store. |
+| `CookieManager.impl` | Platform-native manager; use only when platform-specific behavior is intentional. |
+
+`get(uri)` returns cookies visible to that URI, not every cookie in the profile. Android parses `CookieManager.getCookie(uri)`. iOS and desktop macOS read a broader set and filter by domain, path, and secure state. Windows and Linux desktop ask their native backends for cookies matching the URI.
+
+## Platform mapping
+
+`controller.cookies` is bound to the same controller as `navigator`, `bridge`, and `interceptor`. If configuration isolates a WebView profile or website data store, the cookie manager follows that native store.
+
+| Platform | Public implementation | Native store |
+| --- | --- | --- |
+| Android | `AndroidWebViewCookieManager` | `android.webkit.CookieManager`, or the AndroidX WebKit profile `cookieManager` when configured. |
+| iOS | `WKWebViewCookieManager` | `WKWebView.configuration.websiteDataStore.httpCookieStore`. |
+| JVM desktop | `SwingPanelCookieManager` | `WebViewBridgePanel` native cookie backend: WebView2 on Windows, WebKitGTK on Linux, and WebKit on macOS. |
+
+Desktop requires an absolute `http://` or `https://` URI with a host; invalid desktop URIs throw `IllegalArgumentException`. Android and iOS follow their native URL parser behavior and may return an empty set for invalid input.
+
+## Read cookie attributes
+
+Beyond `name` and `value`, wvbridge provides cross-platform extension properties: `domain`, `path`, `expires`, `httpOnly`, `secure`, `session`, and `sameSite`. Availability depends on what the platform exposes.
+
+```kotlin
+import top.kagg886.wvbridge.cookie.domain
+import top.kagg886.wvbridge.cookie.expires
+import top.kagg886.wvbridge.cookie.httpOnly
+import top.kagg886.wvbridge.cookie.path
+import top.kagg886.wvbridge.cookie.secure
+
+val cookie = controller.cookies.get(controller.url).firstOrNull()
+println(cookie?.domain)
+println(cookie?.path)
+println(cookie?.expires)
+println(cookie?.httpOnly)
+println(cookie?.secure)
+```
+
+| Platform | Attribute visibility |
+| --- | --- |
+| Android | `getCookie()` returns only `name=value`, so these extension attributes are unavailable. |
+| iOS | Backed by `NSHTTPCookie`, usually exposing domain, path, expires, httpOnly, secure, and session. |
+| JVM desktop | The native backend returns structured cookies with domain, path, expires, httpOnly, secure, session, sameSite, and related fields. |
+
+:::note[Session cookies have no persistent expiry]
+`expires` represents the cookie `Expires` attribute, for example `Wed, 20 Aug 2026 12:00:00 GMT`. Session cookies usually return `null`; combine this with `session` instead of treating a missing expiry as already expired.
+:::
+
+## Modify cookie attributes
+
+The common `CookieManager` is read-only. To create, overwrite, delete, or clear cookies, go through `controller.cookies.impl` and use the current platform's native cookie manager. This keeps domain, path, expires, HttpOnly, Secure, SameSite, and related attributes under each browser engine's native rules.
+
+| Platform | `impl` type | Mutation entry point |
+| --- | --- | --- |
+| Android | `android.webkit.CookieManager` | Write an attributed cookie string with `setCookie(url, value)`, and use `removeSessionCookies()`, `removeAllCookies()`, and `flush()` when needed. See the [Android CookieManager API](https://developer.android.com/reference/android/webkit/CookieManager). |
+| iOS | `WKHTTPCookieStore` | Build an `NSHTTPCookie`, then call `setCookie()`, or delete with `deleteCookie()`. See the [WKHTTPCookieStore API](https://developer.apple.com/documentation/webkit/wkhttpcookiestore). |
+| JVM desktop | `WebViewPanelCookieManager` | Use wvbridge desktop extensions: `all(uri)`, `putCookie(uri, cookie)`, `removeCookie(uri, cookie)`, and `clearAll()`. |
+
+Android example: write a cookie with attributes through the native `CookieManager`. The `value` parameter uses browser cookie-string syntax; Android WebView decides which attributes are accepted.
+
+```kotlin
+val manager = controller.cookies.impl as android.webkit.CookieManager
+
+manager.setCookie(
+    "https://example.com/account",
+    "theme=dark; Path=/; Max-Age=2592000; Secure; SameSite=Lax",
+)
+manager.flush()
+```
+
+iOS example: write an `NSHTTPCookie` through `WKHTTPCookieStore`. The property map uses Foundation cookie keys.
+
+```kotlin
+val store = controller.cookies.impl as platform.WebKit.WKHTTPCookieStore
+val cookie = platform.Foundation.NSHTTPCookie.cookieWithProperties(
+    mapOf(
+        platform.Foundation.NSHTTPCookieName to "theme",
+        platform.Foundation.NSHTTPCookieValue to "dark",
+        platform.Foundation.NSHTTPCookieDomain to "example.com",
+        platform.Foundation.NSHTTPCookiePath to "/",
+        platform.Foundation.NSHTTPCookieSecure to "TRUE",
+    ),
+) ?: return
+
+store.setCookie(cookie) {}
+```
+
+JVM desktop example: read structured cookies from the desktop backend, then delete or clear through the desktop extension. `putCookie()` and `removeCookie()` currently require structured cookies returned by the desktop backend; passing an arbitrary `Cookie` implementation throws `IllegalArgumentException`.
+
+```kotlin
+val manager = controller.cookies.impl as WebViewPanelCookieManager
+val url = "https://example.com/account"
+
+val cookies = manager.all(url)
+cookies.firstOrNull { it.name == "debug" }?.let { cookie ->
+    manager.removeCookie(url, cookie)
+}
+
+manager.clearAll()
+```
+
+| Desktop operation | Effect |
+| --- | --- |
+| `all(uri)` | Return structured desktop cookies visible to the URI. |
+| `putCookie(uri, cookie)` | Add or update by `name`, `domain`, and `path`; missing `domain` and `path` are derived from the URI. |
+| `removeCookie(uri, cookie)` | Delete by the structured cookie's `name`, `domain`, and `path`; `value` is not part of identity. |
+| `clearAll()` | Clear cookies in the current desktop WebView data store; other WebViews sharing the same profile or data store may be affected. |
+
+:::caution[Isolate platform mutation code]
+`impl` exposes platform-native objects, not a cross-platform write protocol. Shared business code can use `get(uri)` for reads, but cookie-attribute mutation should be implemented separately for Android, iOS, and JVM desktop.
+:::
+
+## Boundaries
+
+`CookieManager` observes the native WebView cookie store. It does not expose response headers, separate main-frame and subresource requests, or bypass the browser engine's own cookie matching rules.
+
+| Need | Is this API suitable? | Notes |
+| --- | --- | --- |
+| Display cookies visible to the current site | Yes | Use `controller.cookies.get(uri)`. |
+| Update host UI from a login cookie | Yes | Read a snapshot after page load or a user action. |
+| Modify cookie attributes | Yes, platform-specific | Use the Android, iOS, or JVM desktop mutation entry point from `controller.cookies.impl`. |
+| Read every response `Set-Cookie` header | No | Use network-layer or platform-native interception. |
+| Audit cookies on every subresource request | No | The store gives a URI-matched view, not request-by-request tracing. |
+
+Next, read the [Controller guide](/en/controller/) to see how `cookies` is bound to the same WebView instance as navigation, scripts, and interceptors.

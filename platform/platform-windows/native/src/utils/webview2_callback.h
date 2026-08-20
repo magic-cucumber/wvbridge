@@ -65,6 +65,11 @@ inline const IID &webview2_handler_iid<ICoreWebView2ExecuteScriptCompletedHandle
 }
 
 template<>
+inline const IID &webview2_handler_iid<ICoreWebView2GetCookiesCompletedHandler>() {
+    return IID_ICoreWebView2GetCookiesCompletedHandler;
+}
+
+template<>
 inline const IID &webview2_handler_iid<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>() {
     return IID_ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler;
 }

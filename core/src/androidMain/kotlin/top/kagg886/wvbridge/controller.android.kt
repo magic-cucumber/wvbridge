@@ -13,10 +13,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.cookie.AndroidWebViewCookieManager
+import top.kagg886.wvbridge.cookie.CookieManager
 import top.kagg886.wvbridge.interceptor.Interceptor
 import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.util.LoggerReceiver
+import android.webkit.CookieManager as AndroidCookieManager
 import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -50,9 +53,14 @@ internal class AndroidWebViewController(delegate: AutoClosableWebView, profile: 
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: lazy init")
         AndroidJavaScriptBridge(delegate.instance)
     }
+    internal val _cookies by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "cookies: lazy init")
+        AndroidWebViewCookieManager(profile?.cookieManager ?: AndroidCookieManager.getInstance())
+    }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
     override val interceptor: Interceptor get() = _interceptor
+    override val cookies: CookieManager<*> get() = _cookies
 
     internal companion object {
         private const val TAG = "AndroidWebViewController"
