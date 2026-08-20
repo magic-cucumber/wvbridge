@@ -18,6 +18,8 @@ import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
 import top.kagg886.wvbridge.config.WebViewConfig
 import top.kagg886.wvbridge.config.WebsiteDataStore
+import top.kagg886.wvbridge.cookie.CookieManager
+import top.kagg886.wvbridge.cookie.WKWebViewCookieManager
 import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
@@ -51,9 +53,14 @@ internal class WKWebViewController(instance: AutoClosableWKWebView) :
         LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating WKJavaScriptBridge")
         WKJavaScriptBridge(instance.delegate)
     }
+    internal val _cookies by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "creating CookieManager")
+        WKWebViewCookieManager(instance.delegate.configuration.websiteDataStore.httpCookieStore)
+    }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
     override val interceptor: Interceptor get() = _interceptor
+    override val cookies: CookieManager<*> get() = _cookies
 
     private companion object {
         private const val TAG = "WKVWCtrl"

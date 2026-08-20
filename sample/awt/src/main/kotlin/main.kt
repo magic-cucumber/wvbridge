@@ -1,7 +1,5 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
-import top.kagg886.wvbridge.config.WebViewPlatformConfig
-import top.kagg886.wvbridge.config.defaultPlatformConfig
 import top.kagg886.wvbridge.cookie.Cookie
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import top.kagg886.wvbridge.util.LoggerReceiver
@@ -10,7 +8,6 @@ import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.swing.*
-import top.kagg886.wvbridge.config.currentJvmPlatformSetting
 import top.kagg886.wvbridge.config.internal.NativeLinuxWebViewPlatformSetting
 import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewPlatformSetting
 import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewWebsiteDataStore
@@ -154,7 +151,7 @@ private class CookieManagerWindow(
         addRow(1, "值", valueField)
         addRow(2, "域", domainField)
         addRow(3, "路径", pathField)
-        addRow(4, "过期时间（Unix 秒）", expiresField)
+        addRow(4, "过期时间（Unix 毫秒）", expiresField)
         addRow(5, "SameSite", sameSiteBox)
         addRow(
             6,
@@ -181,8 +178,8 @@ private class CookieManagerWindow(
                 JOptionPane.showMessageDialog(this, "Cookie 名称不能为空。")
                 continue
             }
-            if (!sessionBox.isSelected && expiresField.text.trim().toDoubleOrNull() == null) {
-                JOptionPane.showMessageDialog(this, "非会话 Cookie 需要有效的 Unix 秒时间戳。")
+            if (!sessionBox.isSelected && expiresField.text.trim().toLongOrNull() == null) {
+                JOptionPane.showMessageDialog(this, "非会话 Cookie 需要有效的 Unix 毫秒时间戳。")
                 continue
             }
 
@@ -201,7 +198,7 @@ private class CookieManagerWindow(
                 ?.let { properties["sameSite"] = it }
 
             val succeeded = runCookieAction("增加 Cookie 失败") {
-                webView.put(it, StructedCookie(properties))
+                webView.putCookie(it, StructedCookie(properties))
             }
             if (succeeded) {
                 reloadCookies()
@@ -229,7 +226,7 @@ private class CookieManagerWindow(
         ) return
 
         val succeeded = runCookieAction("删除 Cookie 失败") { uri ->
-            selectedCookies.forEach { webView.remove(uri, it) }
+            selectedCookies.forEach { webView.removeCookie(uri, it) }
         }
         if (succeeded) reloadCookies()
     }
@@ -286,7 +283,7 @@ private class CookieManagerWindow(
             CookieField("value", "值"),
             CookieField("domain", "域"),
             CookieField("path", "路径"),
-            CookieField("expires", "过期时间（Unix 秒）"),
+            CookieField("expires", "过期时间（Unix 毫秒）"),
             CookieField("httpOnly", "HttpOnly"),
             CookieField("secure", "Secure"),
             CookieField("session", "Session"),

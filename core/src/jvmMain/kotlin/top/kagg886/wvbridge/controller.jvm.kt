@@ -2,17 +2,21 @@ package top.kagg886.wvbridge
 
 import androidx.compose.runtime.*
 import kotlinx.coroutines.suspendCancellableCoroutine
-import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
+import top.kagg886.wvbridge.config.WebViewConfig
+import top.kagg886.wvbridge.config.currentJvmPlatformSetting
+import top.kagg886.wvbridge.cookie.CookieManager
+import top.kagg886.wvbridge.cookie.SwingPanelCookieManager
+import top.kagg886.wvbridge.cookie.WebViewPanelCookieManager
 import top.kagg886.wvbridge.interceptor.Interceptor
 import top.kagg886.wvbridge.interceptor.InterceptorHandler
 import top.kagg886.wvbridge.internal.WebViewBridgePanel
-import top.kagg886.wvbridge.config.WebViewConfig
-import top.kagg886.wvbridge.config.currentJvmPlatformSetting
+import top.kagg886.wvbridge.util.CloseHandle
 import top.kagg886.wvbridge.util.LoggerReceiver
 import javax.swing.SwingUtilities
 import kotlin.coroutines.resume
+import top.kagg886.wvbridge.internal.cookie.WebViewPanelCookieManager as InternalWebViewPanelCookieManager
 
 internal class SwingPanelController internal constructor(instance: WebViewBridgePanel) :
     WebViewController<WebViewBridgePanel>(instance) {
@@ -29,9 +33,14 @@ internal class SwingPanelController internal constructor(instance: WebViewBridge
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "bridge: lazy init")
         SwingPanelJavaScriptBridge(instance)
     }
+    internal val _cookies by lazy {
+        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "cookies: lazy init")
+        SwingPanelCookieManager(WebViewPanelCookieManager(InternalWebViewPanelCookieManager(instance)))
+    }
     override val navigator: Navigator get() = _navigator
     override val bridge: JavaScriptBridge get() = _bridge
     override val interceptor: Interceptor get() = _interceptor
+    override val cookies: CookieManager<*> get() = _cookies
 
     private companion object {
         private const val TAG = "SwingPanelCtrl"
@@ -43,7 +52,7 @@ internal class JvmNavigationInterceptor(instance: WebViewBridgePanel) : Intercep
 
     init {
         instance.navigationInterceptor = {
-            when(val state = handleNavigation(it)) {
+            when (val state = handleNavigation(it)) {
                 InterceptorHandler.Result.Allowed -> "1"
                 InterceptorHandler.Result.Rejected -> "2"
                 is InterceptorHandler.Result.Redirected -> "3${state.url}"
@@ -109,20 +118,40 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                     private var closed = false
 
                     override fun close() {
-                        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerDocumentStartHook.close: closed=$closed")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.INFO,
+                            TAG,
+                            "registerDocumentStartHook.close: closed=$closed"
+                        )
                         if (closed) {
-                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: already closed, returning")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.WARN,
+                                TAG,
+                                "registerDocumentStartHook.close: already closed, returning"
+                            )
                             return
                         }
                         if (instance.handle == 0L) {
                             closed = true
-                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerDocumentStartHook.close: webview handle is null, returning")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.WARN,
+                                TAG,
+                                "registerDocumentStartHook.close: webview handle is null, returning"
+                            )
                             return
                         }
                         closed = true
-                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: unregistering hookId=$hookId")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.VERBOSE,
+                            TAG,
+                            "registerDocumentStartHook.close: unregistering hookId=$hookId"
+                        )
                         instance.unregisterDocumentStartHook(hookId)
-                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerDocumentStartHook.close: hook unregistered")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.VERBOSE,
+                            TAG,
+                            "registerDocumentStartHook.close: hook unregistered"
+                        )
                     }
                 })
             }
@@ -140,20 +169,40 @@ internal class SwingPanelJavaScriptBridge(private val instance: WebViewBridgePan
                     private var closed = false
 
                     override fun close() {
-                        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG, "registerWebMessageHandler.close: closed=$closed")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.INFO,
+                            TAG,
+                            "registerWebMessageHandler.close: closed=$closed"
+                        )
                         if (closed) {
-                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: already closed, returning")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.WARN,
+                                TAG,
+                                "registerWebMessageHandler.close: already closed, returning"
+                            )
                             return
                         }
                         if (instance.handle == 0L) {
                             closed = true
-                            LoggerReceiver.log(LoggerReceiver.Level.WARN, TAG, "registerWebMessageHandler.close: webview handle is null, returning")
+                            LoggerReceiver.log(
+                                LoggerReceiver.Level.WARN,
+                                TAG,
+                                "registerWebMessageHandler.close: webview handle is null, returning"
+                            )
                             return
                         }
                         closed = true
-                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: unregistering handlerId=$handlerId")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.VERBOSE,
+                            TAG,
+                            "registerWebMessageHandler.close: unregistering handlerId=$handlerId"
+                        )
                         instance.unregisterWebMessageHandler(handlerId)
-                        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG, "registerWebMessageHandler.close: handler unregistered")
+                        LoggerReceiver.log(
+                            LoggerReceiver.Level.VERBOSE,
+                            TAG,
+                            "registerWebMessageHandler.close: handler unregistered"
+                        )
                     }
                 })
             }
@@ -213,16 +262,28 @@ public actual fun rememberWebViewController(url: String, config: WebViewConfig):
     var initialized by remember { mutableStateOf(false) }
 
     val controller = remember(config) {
-        LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: creating WebViewBridgePanel")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.VERBOSE,
+            TAG_RWVC,
+            "rememberWebViewController: creating WebViewBridgePanel"
+        )
         SwingPanelController(instance = WebViewBridgePanel(config.currentJvmPlatformSetting()) { initialized = true })
     }
 
     LaunchedEffect(initialized) {
         if (!initialized) {
-            LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: not yet initialized, waiting")
+            LoggerReceiver.log(
+                LoggerReceiver.Level.VERBOSE,
+                TAG_RWVC,
+                "rememberWebViewController: not yet initialized, waiting"
+            )
             return@LaunchedEffect
         }
-        LoggerReceiver.log(LoggerReceiver.Level.INFO, TAG_RWVC, "rememberWebViewController: initialized, setting url=$url")
+        LoggerReceiver.log(
+            LoggerReceiver.Level.INFO,
+            TAG_RWVC,
+            "rememberWebViewController: initialized, setting url=$url"
+        )
         controller.url = url
         controller.loadingState = LoadingState.Ready
         LoggerReceiver.log(LoggerReceiver.Level.VERBOSE, TAG_RWVC, "rememberWebViewController: set loadingState=Ready")

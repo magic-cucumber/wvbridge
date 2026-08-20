@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import top.kagg886.wvbridge.bridge.JavaScriptBridge
 import top.kagg886.wvbridge.config.WebViewConfig
 import top.kagg886.wvbridge.config.WebViewPlatformConfig
+import top.kagg886.wvbridge.cookie.CookieManager
 import top.kagg886.wvbridge.interceptor.Interceptor
 
 /**
@@ -75,7 +76,17 @@ public abstract class WebViewController<T : AutoCloseable> internal constructor(
      */
     public abstract val bridge: JavaScriptBridge
 
+    /**
+     * Navigation interceptor registry bound to the same native WebView instance.
+     */
     public abstract val interceptor: Interceptor
+
+    /**
+     * Cookie manager bound to the same native WebView instance, profile, or website data store.
+     *
+     * See [CookieManager] for the platform mapping and the exact behavior of cookie reads.
+     */
+    public abstract val cookies: CookieManager<*>
 }
 
 /**

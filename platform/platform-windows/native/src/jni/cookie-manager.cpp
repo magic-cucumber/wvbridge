@@ -6,9 +6,6 @@
 #include <atomic>
 #include <cctype>
 #include <future>
-#include <iomanip>
-#include <limits>
-#include <sstream>
 #include <utility>
 
 using Microsoft::WRL::ComPtr;
@@ -112,7 +109,7 @@ HRESULT create_platform_cookie(
     );
     if (!session && !expires.empty()) {
         try {
-            hr = (*out)->put_Expires(std::stod(expires));
+            hr = (*out)->put_Expires(static_cast<double>(std::stoll(expires)) / 1000.0);
         } catch (...) {
             LOGGER_E("windows.cookie.createPlatformCookie: expires parse failed value=%s", expires.c_str());
             return E_INVALIDARG;
@@ -173,9 +170,7 @@ HRESULT platform_cookie_to_properties(
         same_site == COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE ? "NONE" :
         same_site == COREWEBVIEW2_COOKIE_SAME_SITE_KIND_STRICT ? "STRICT" : "LAX";
     if (!session) {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10) << expires;
-        (*out)[wvbridge::COOKIE_EXPIRES] = stream.str();
+        (*out)[wvbridge::COOKIE_EXPIRES] = std::to_string(static_cast<long long>(expires * 1000.0));
     }
     LOGGER_D("windows.cookie.platformToProperties: exit name=%s domain=%s session=%d", (*out)[wvbridge::COOKIE_NAME].c_str(), (*out)[wvbridge::COOKIE_DOMAIN].c_str(), session);
     return S_OK;
@@ -307,9 +302,9 @@ API_EXPORT(jobjectArray, allCookies, jlong handle, jstring uri) {
                     hr = PLATFORM_COOKIE_TO_PROPERTIES(cookie.Get(), &properties);
                     if (SUCCEEDED(hr)) cookies.push_back(std::move(properties));
                 }
-                const size_t count = cookies.size();
+                const size_t cookie_count = cookies.size();
                 completion->complete(hr, std::move(cookies));
-                LOGGER_D("windows.cookie.allCookies.callback: exit hr=0x%08lx count=%zu", (unsigned long) hr, count);
+                LOGGER_D("windows.cookie.allCookies.callback: exit hr=0x%08lx count=%zu", (unsigned long) hr, cookie_count);
                 return S_OK;
             }
         );

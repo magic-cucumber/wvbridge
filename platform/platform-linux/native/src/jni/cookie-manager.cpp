@@ -7,9 +7,6 @@
 
 #include <cctype>
 #include <future>
-#include <iomanip>
-#include <limits>
-#include <sstream>
 
 namespace {
 
@@ -110,7 +107,7 @@ SoupCookie *create_platform_cookie(
     );
     if (!session && !expires.empty()) {
         try {
-            GDateTime *date = g_date_time_new_from_unix_utc(static_cast<gint64>(std::stod(expires)));
+            GDateTime *date = g_date_time_new_from_unix_utc(static_cast<gint64>(std::stoll(expires) / 1000));
             if (date) {
                 soup_cookie_set_expires(cookie, date);
                 g_date_time_unref(date);
@@ -145,7 +142,7 @@ wvbridge::CookieProperties platform_cookie_to_properties(SoupCookie *cookie) {
     GDateTime *expires = soup_cookie_get_expires(cookie);
     properties[wvbridge::COOKIE_SESSION] = expires ? "false" : "true";
     if (expires) {
-        properties[wvbridge::COOKIE_EXPIRES] = std::to_string(g_date_time_to_unix(expires));
+        properties[wvbridge::COOKIE_EXPIRES] = std::to_string(g_date_time_to_unix(expires) * 1000);
     }
     switch (soup_cookie_get_same_site_policy(cookie)) {
         case SOUP_SAME_SITE_POLICY_NONE:

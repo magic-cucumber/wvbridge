@@ -5,9 +5,6 @@
 
 #include <cctype>
 #include <dispatch/dispatch.h>
-#include <iomanip>
-#include <limits>
-#include <sstream>
 
 namespace {
 
@@ -82,7 +79,7 @@ NSHTTPCookie *create_platform_cookie(
         values[NSHTTPCookieDiscard] = @"TRUE";
     } else if (!expires.empty()) {
         try {
-            values[NSHTTPCookieExpires] = [NSDate dateWithTimeIntervalSince1970:std::stod(expires)];
+            values[NSHTTPCookieExpires] = [NSDate dateWithTimeIntervalSince1970:std::stoll(expires) / 1000.0];
         } catch (...) {
             LOGGER_E("macos.cookie.createPlatformCookie: exit nil because expires parse failed value=%s", expires.c_str());
             return nil;
@@ -112,10 +109,9 @@ wvbridge::CookieProperties platform_cookie_to_properties(NSHTTPCookie *cookie) {
     properties[wvbridge::COOKIE_SECURE] = cookie.isSecure ? "true" : "false";
     properties[wvbridge::COOKIE_SESSION] = cookie.isSessionOnly ? "true" : "false";
     if (!cookie.isSessionOnly && cookie.expiresDate) {
-        std::ostringstream stream;
-        stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-               << cookie.expiresDate.timeIntervalSince1970;
-        properties[wvbridge::COOKIE_EXPIRES] = stream.str();
+        properties[wvbridge::COOKIE_EXPIRES] = std::to_string(
+            static_cast<long long>(cookie.expiresDate.timeIntervalSince1970 * 1000.0)
+        );
     }
     NSString *same_site = cookie.sameSitePolicy;
     if (same_site) properties[wvbridge::COOKIE_SAME_SITE] = upper_ascii(std_string(same_site));

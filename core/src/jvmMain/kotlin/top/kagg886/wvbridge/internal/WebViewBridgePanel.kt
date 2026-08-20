@@ -13,7 +13,6 @@ import java.util.function.BiConsumer
 import java.util.function.Consumer
 import javax.swing.SwingUtilities
 import kotlin.concurrent.withLock
-import top.kagg886.wvbridge.JvmNavigationInterceptor
 import top.kagg886.wvbridge.bridge.WebMessageConsumer
 import top.kagg886.wvbridge.cookie.Cookie
 import top.kagg886.wvbridge.internal.cookie.StructedCookie
@@ -298,12 +297,12 @@ internal class WebViewBridgePanel(
         }
     }
 
-    internal fun put(uri: String, cookie: Cookie) {
+    internal fun putCookie(uri: String, cookie: Cookie) {
         require(cookie is StructedCookie) { "cookie must be a StructedCookie" }
         putCookie(handle, uri, cookie)
     }
 
-    internal fun remove(uri: String, cookie: Cookie) {
+    internal fun removeCookie(uri: String, cookie: Cookie) {
         require(cookie is StructedCookie) { "cookie must be a StructedCookie" }
         removeCookie(handle, uri, cookie)
     }
