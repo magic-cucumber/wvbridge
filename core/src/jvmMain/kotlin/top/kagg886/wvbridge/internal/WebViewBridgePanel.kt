@@ -311,7 +311,7 @@ internal class WebViewBridgePanel(
         clearAllCookies(handle)
     }
 
-    internal fun all(uri: String): List<StructedCookie> = allCookies(handle, uri).asList()
+    internal fun all(uri: String): Set<StructedCookie> = allCookies(handle, uri).toSet()
 
 
     // --------------init and close--------------

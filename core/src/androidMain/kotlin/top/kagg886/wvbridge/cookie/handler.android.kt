@@ -15,11 +15,12 @@ import android.webkit.CookieManager as AndroidCookieManager
  */
 public class AndroidWebViewCookieManager(override val impl: AndroidCookieManager) : CookieManager<AndroidCookieManager> {
 
-    override fun get(uri: String): List<Cookie> {
+    override fun get(uri: String): Set<Cookie> {
         return impl.getCookie(uri)
             ?.split(';')
             .orEmpty()
             .mapNotNull { it.trim().toCookieOrNull() }
+            .toSet()
     }
 
     private fun String.toCookieOrNull(): Cookie? {

@@ -21,9 +21,9 @@ import platform.darwin.dispatch_semaphore_wait
  */
 public class WKWebViewCookieManager(override val impl: WKHTTPCookieStore) : CookieManager<WKHTTPCookieStore> {
 
-    override fun get(uri: String): List<Cookie> {
-        val url = NSURL.URLWithString(uri) ?: return emptyList()
-        var result: List<Cookie> = emptyList()
+    override fun get(uri: String): Set<Cookie> {
+        val url = NSURL.URLWithString(uri) ?: return emptySet()
+        var result: Set<Cookie> = emptySet()
         val semaphore = dispatch_semaphore_create(0)
 
         impl.getAllCookies { cookies ->
@@ -32,9 +32,9 @@ public class WKWebViewCookieManager(override val impl: WKHTTPCookieStore) : Cook
                 .filterIsInstance<NSHTTPCookie>()
                 .filter { it.matches(url) }
                 .map { it.toPlatformCookie() }
+                .toSet()
             dispatch_semaphore_signal(semaphore)
         }
-
         dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER)
         return result
     }

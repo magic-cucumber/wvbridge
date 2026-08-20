@@ -70,5 +70,5 @@ public interface CookieManager<out Impl> {
      * @param uri Target request URI used by the platform to select matching cookies.
      * @return Cookies visible to a request for [uri].
      */
-    public fun get(uri: String): List<Cookie>
+    public fun get(uri: String): Set<Cookie>
 }

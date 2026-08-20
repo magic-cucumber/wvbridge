@@ -5,6 +5,7 @@ import top.kagg886.wvbridge.internal.WebViewBridgePanel
 import top.kagg886.wvbridge.util.LoggerReceiver
 import java.awt.*
 import java.io.File
+import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.swing.*
@@ -12,6 +13,7 @@ import top.kagg886.wvbridge.config.internal.NativeLinuxWebViewPlatformSetting
 import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewPlatformSetting
 import top.kagg886.wvbridge.config.internal.NativeMacOSWebViewWebsiteDataStore
 import top.kagg886.wvbridge.config.internal.NativeWindowsWebViewPlatformSetting
+import top.kagg886.wvbridge.cookie.path
 import top.kagg886.wvbridge.internal.JvmTarget
 import top.kagg886.wvbridge.internal.jvmTarget
 import top.kagg886.wvbridge.internal.cookie.StructedCookie
@@ -98,7 +100,7 @@ private class CookieManagerWindow(
     }
 
     private fun reloadCookies() = runCookieAction("读取 Cookie 失败") { uri ->
-        cookies = webView.all(uri)
+        cookies = webView.all(uri).sortedWith(COOKIE_NAME_NATURAL_ORDER)
         tableModel.rowCount = 0
         cookies.forEach { cookie ->
             val properties = (cookie as StructedCookie).dict
@@ -116,7 +118,7 @@ private class CookieManagerWindow(
         }
         val nameField = JTextField(24)
         val valueField = JTextField(24)
-        val domainField = JTextField(24)
+        val domainField = JTextField(URI(uri).host.orEmpty(), 24)
         val pathField = JTextField(24)
         val expiresField = JTextField(24).apply { isEnabled = false }
         val httpOnlyBox = JCheckBox("HttpOnly")
@@ -192,7 +194,7 @@ private class CookieManagerWindow(
             )
             domainField.text.trim().takeIf(String::isNotEmpty)?.let { properties["domain"] = it }
             pathField.text.trim().takeIf(String::isNotEmpty)?.let { properties["path"] = it }
-            expiresField.text.trim().takeIf(String::isNotEmpty)?.let { properties["expires"] = it }
+            expiresField.text.trim().takeIf(String::isNotEmpty)?.let { properties["expiresTimeStamp"] = it }
             (sameSiteBox.selectedItem as String)
                 .takeUnless { it == "默认" }
                 ?.let { properties["sameSite"] = it }
@@ -283,12 +285,78 @@ private class CookieManagerWindow(
             CookieField("value", "值"),
             CookieField("domain", "域"),
             CookieField("path", "路径"),
-            CookieField("expires", "过期时间（Unix 毫秒）"),
+            CookieField("expiresTimeStamp", "过期时间（Unix 毫秒）"),
             CookieField("httpOnly", "HttpOnly"),
             CookieField("secure", "Secure"),
             CookieField("session", "Session"),
             CookieField("sameSite", "SameSite"),
         )
+
+        private val COOKIE_NAME_NATURAL_ORDER = Comparator<Cookie> { left, right ->
+            compareNaturally(left.name, right.name)
+        }
+
+        private fun compareNaturally(left: String, right: String): Int {
+            var leftIndex = 0
+            var rightIndex = 0
+
+            while (leftIndex < left.length && rightIndex < right.length) {
+                val leftChar = left[leftIndex]
+                val rightChar = right[rightIndex]
+
+                if (leftChar.isDigit() && rightChar.isDigit()) {
+                    val result = compareNumberPart(left, leftIndex, right, rightIndex)
+                    if (result != 0) return result
+                    leftIndex = nextNonDigitIndex(left, leftIndex)
+                    rightIndex = nextNonDigitIndex(right, rightIndex)
+                    continue
+                }
+
+                val caseInsensitive = leftChar.lowercaseChar().compareTo(rightChar.lowercaseChar())
+                if (caseInsensitive != 0) return caseInsensitive
+
+                val caseSensitive = leftChar.compareTo(rightChar)
+                if (caseSensitive != 0) return caseSensitive
+
+
+                leftIndex++
+                rightIndex++
+            }
+
+            return (left.length - leftIndex).compareTo(right.length - rightIndex)
+        }
+
+        private fun compareNumberPart(left: String, leftStart: Int, right: String, rightStart: Int): Int {
+            val leftEnd = nextNonDigitIndex(left, leftStart)
+            val rightEnd = nextNonDigitIndex(right, rightStart)
+            val leftSignificantStart = left.indexOfFirstNonZero(leftStart, leftEnd)
+            val rightSignificantStart = right.indexOfFirstNonZero(rightStart, rightEnd)
+            val leftSignificantLength = leftEnd - leftSignificantStart
+            val rightSignificantLength = rightEnd - rightSignificantStart
+
+            if (leftSignificantLength != rightSignificantLength) {
+                return leftSignificantLength.compareTo(rightSignificantLength)
+            }
+
+            for (offset in 0 until leftSignificantLength) {
+                val result = left[leftSignificantStart + offset].compareTo(right[rightSignificantStart + offset])
+                if (result != 0) return result
+            }
+
+            return (leftEnd - leftStart).compareTo(rightEnd - rightStart)
+        }
+
+        private fun nextNonDigitIndex(value: String, start: Int): Int {
+            var index = start
+            while (index < value.length && value[index].isDigit()) index++
+            return index
+        }
+
+        private fun String.indexOfFirstNonZero(start: Int, end: Int): Int {
+            var index = start
+            while (index < end - 1 && this[index] == '0') index++
+            return index
+        }
     }
 }
 

@@ -12,7 +12,7 @@ import top.kagg886.wvbridge.internal.cookie.WebViewPanelCookieManager as Interna
  */
 public class SwingPanelCookieManager internal constructor(override val impl: WebViewPanelCookieManager) :
     CookieManager<WebViewPanelCookieManager> {
-    override fun get(uri: String): List<Cookie> {
+    override fun get(uri: String): Set<Cookie> {
         return impl.all(uri)
     }
 }
@@ -79,5 +79,5 @@ public class WebViewPanelCookieManager internal constructor(internal val impl: I
      * structured desktop cookies, but callers should treat them as [Cookie] unless they explicitly
      * need desktop-only mutation support.
      */
-    public fun all(uri: String): List<Cookie> = impl.all(uri)
+    public fun all(uri: String): Set<Cookie> = impl.all(uri)
 }

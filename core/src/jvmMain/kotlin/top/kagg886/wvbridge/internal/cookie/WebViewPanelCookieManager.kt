@@ -18,5 +18,5 @@ internal class WebViewPanelCookieManager internal constructor(private val panel:
         panel.clearAll()
     }
 
-    fun all(uri: String): List<Cookie> = panel.all(uri)
+    fun all(uri: String): Set<Cookie> = panel.all(uri)
 }
