@@ -1,0 +1,175 @@
+---
+title: Cookie 管理器
+description: 从同一个原生 WebView 数据存储读取 Cookie，并通过平台 impl 修改 Cookie 属性。
+---
+
+很多 WebView 页面会依赖登录态、A/B 分组或会话标识。`CookieManager` 提供的是绑定到当前 `WebViewController` 的 Cookie 视图：它读取同一个原生 WebView、profile 或 website data store 中对指定 URL 可见的 Cookie，而不是解析页面里的 `document.cookie` 字符串。
+
+完整签名可查看 [CookieManager API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.cookie/-cookie-manager/index.html) 和 [Cookie API](https://wvbridge.kagg886.top/dokka/wvbridge-core/top.kagg886.wvbridge.cookie/-cookie/index.html)。
+
+## 本页导航
+
+- [读取当前站点 Cookie](#读取当前站点-cookie)
+- [返回值表示什么](#返回值表示什么)
+- [平台映射](#平台映射)
+- [读取 Cookie 属性](#读取-cookie-属性)
+- [修改 Cookie 属性](#修改-cookie-属性)
+- [使用边界](#使用边界)
+
+## 读取当前站点 Cookie
+
+从 controller 取得 `cookies`，再用目标请求 URL 查询。返回值是一次快照；之后页面跳转、重定向、JavaScript 写入或原生存储变化，不会自动更新已经拿到的集合。
+
+```kotlin
+val cookies = controller.cookies.get("https://example.com/account")
+
+cookies.forEach { cookie ->
+    println("${cookie.name}=${cookie.value}")
+}
+```
+
+在 Compose 中通常把读取动作放到页面完成、用户点击或调试面板刷新里，而不是在每次重组中直接调用。部分平台需要桥接原生异步 Cookie API，读取不应被当成纯内存查询。
+
+```kotlin
+LaunchedEffect(controller.loadingState) {
+    if (controller.loadingState is LoadingState.LoadingEnd) {
+        val sessionCookies = controller.cookies.get(controller.url)
+        // 根据业务协议读取需要的 name/value。
+    }
+}
+```
+
+:::tip[用目标 URL 查询，而不是只用域名]
+Cookie 是否匹配请求不仅取决于 host，还取决于 path、secure 等属性。传入完整的 `http://` 或 `https://` URL，可以让底层平台按实际请求语义筛选。
+:::
+
+## 返回值表示什么
+
+公共 `Cookie` 只保证 `name` 和 `value`。不同浏览器引擎能暴露的 Cookie 属性并不一致，因此通用业务逻辑应优先依赖这两个字段。
+
+| 成员 | 语义 |
+| --- | --- |
+| `Cookie.name` | 原生 Cookie 存储报告的名称。 |
+| `Cookie.value` | 原生 Cookie 存储报告的值。 |
+| `CookieManager.impl` | 当前平台的原生管理器；只在确实需要平台能力时使用。 |
+
+`get(uri)` 返回的是「对这个 URI 可见」的 Cookie，而不是整个 profile 的完整 Cookie 列表。Android 的实现来自 `CookieManager.getCookie(uri)`；iOS 和桌面 macOS 会读取更多 Cookie 后再按域、路径和安全属性过滤；Windows 与 Linux 桌面端则直接询问各自原生后端对该 URI 的匹配结果。
+
+## 平台映射
+
+`controller.cookies` 与 `navigator`、`bridge`、`interceptor` 一样绑定到同一个 controller。若你通过配置让 WebView 使用隔离 profile 或 website data store，Cookie 管理器也跟随这份原生存储。
+
+| 平台 | 公共实现 | 原生存储 |
+| --- | --- | --- |
+| Android | `AndroidWebViewCookieManager` | `android.webkit.CookieManager`；配置 AndroidX WebKit profile 时使用该 profile 的 `cookieManager`。 |
+| iOS | `WKWebViewCookieManager` | `WKWebView.configuration.websiteDataStore.httpCookieStore`。 |
+| JVM 桌面 | `SwingPanelCookieManager` | `WebViewBridgePanel` 的原生 Cookie 后端：Windows 为 WebView2，Linux 为 WebKitGTK，macOS 为 WebKit。 |
+
+桌面端要求传入带 host 的绝对 `http://` 或 `https://` URI；非法 URI 会抛出 `IllegalArgumentException`。Android 与 iOS 遵循各自 URL 解析行为，非法输入可能得到空集合。
+
+## 读取 Cookie 属性
+
+除 `name`、`value` 外，wvbridge 还提供了一组跨平台扩展属性：`domain`、`path`、`expires`、`httpOnly`、`secure`、`session` 和 `sameSite`。这些属性的可用性取决于平台实际是否暴露。
+
+```kotlin
+import top.kagg886.wvbridge.cookie.domain
+import top.kagg886.wvbridge.cookie.expires
+import top.kagg886.wvbridge.cookie.httpOnly
+import top.kagg886.wvbridge.cookie.path
+import top.kagg886.wvbridge.cookie.secure
+
+val cookie = controller.cookies.get(controller.url).firstOrNull()
+println(cookie?.domain)
+println(cookie?.path)
+println(cookie?.expires)
+println(cookie?.httpOnly)
+println(cookie?.secure)
+```
+
+| 平台 | 属性可见性 |
+| --- | --- |
+| Android | `getCookie()` 只返回 `name=value`，这些扩展属性不可用。 |
+| iOS | 来自 `NSHTTPCookie`，通常可以读取 domain、path、expires、httpOnly、secure、session 等属性。 |
+| JVM 桌面 | 原生后端返回结构化 Cookie，内部携带 domain、path、expires、httpOnly、secure、session、sameSite 等属性。 |
+
+:::note[会话 Cookie 没有持久过期时间]
+`expires` 表示 Cookie 的 `Expires` 属性，格式类似 `Wed, 20 Aug 2026 12:00:00 GMT`。会话 Cookie 通常返回 `null`，应结合 `session` 判断，而不是把空过期时间当作已过期。
+:::
+
+## 修改 Cookie 属性
+
+通用 `CookieManager` 是只读接口。需要创建、覆盖、删除或清空 Cookie 时，应通过 `controller.cookies.impl` 进入当前平台的原生 Cookie 管理器。这样做能保留各平台对 domain、path、expires、HttpOnly、Secure、SameSite 等属性的原生语义。
+
+| 平台 | `impl` 类型 | 修改入口 |
+| --- | --- | --- |
+| Android | `android.webkit.CookieManager` | 使用 `setCookie(url, value)` 写入带属性的 Cookie 字符串，必要时调用 `removeSessionCookies()`、`removeAllCookies()` 和 `flush()`。见 [Android CookieManager API](https://developer.android.com/reference/android/webkit/CookieManager)。 |
+| iOS | `WKHTTPCookieStore` | 构造 `NSHTTPCookie` 后调用 `setCookie()`，或用 `deleteCookie()` 删除。见 [WKHTTPCookieStore API](https://developer.apple.com/documentation/webkit/wkhttpcookiestore)。 |
+| JVM 桌面 | `WebViewPanelCookieManager` | 使用 wvbridge 的桌面扩展：`all(uri)`、`putCookie(uri, cookie)`、`removeCookie(uri, cookie)`、`clearAll()`。 |
+
+Android 示例：通过原生 `CookieManager` 写入一条带属性的 Cookie。`value` 参数使用浏览器 Cookie 字符串语法，属性是否生效由 Android WebView 决定。
+
+```kotlin
+val manager = controller.cookies.impl as android.webkit.CookieManager
+
+manager.setCookie(
+    "https://example.com/account",
+    "theme=dark; Path=/; Max-Age=2592000; Secure; SameSite=Lax",
+)
+manager.flush()
+```
+
+iOS 示例：通过 `WKHTTPCookieStore` 写入 `NSHTTPCookie`。属性字典使用 Foundation 的 Cookie key。
+
+```kotlin
+val store = controller.cookies.impl as platform.WebKit.WKHTTPCookieStore
+val cookie = platform.Foundation.NSHTTPCookie.cookieWithProperties(
+    mapOf(
+        platform.Foundation.NSHTTPCookieName to "theme",
+        platform.Foundation.NSHTTPCookieValue to "dark",
+        platform.Foundation.NSHTTPCookieDomain to "example.com",
+        platform.Foundation.NSHTTPCookiePath to "/",
+        platform.Foundation.NSHTTPCookieSecure to "TRUE",
+    ),
+) ?: return
+
+store.setCookie(cookie) {}
+```
+
+JVM 桌面示例：先读取桌面后端返回的结构化 Cookie，再用桌面扩展删除或清空。`putCookie()` 与 `removeCookie()` 目前要求传入由桌面后端返回的结构化 Cookie；直接自己实现一个 `Cookie` 再传入会抛出 `IllegalArgumentException`。
+
+```kotlin
+val manager = controller.cookies.impl as WebViewPanelCookieManager
+val url = "https://example.com/account"
+
+val cookies = manager.all(url)
+cookies.firstOrNull { it.name == "debug" }?.let { cookie ->
+    manager.removeCookie(url, cookie)
+}
+
+manager.clearAll()
+```
+
+| 桌面操作 | 作用 |
+| --- | --- |
+| `all(uri)` | 返回桌面端对该 URI 可见的结构化 Cookie。 |
+| `putCookie(uri, cookie)` | 按 `name`、`domain`、`path` 添加或更新 Cookie；缺失的 `domain`、`path` 会从 URI 派生。 |
+| `removeCookie(uri, cookie)` | 按结构化 Cookie 的 `name`、`domain`、`path` 删除，`value` 不参与身份匹配。 |
+| `clearAll()` | 清空当前桌面 WebView 数据存储中的 Cookie；共享同一 profile 或 data store 的其他 WebView 也可能受影响。 |
+
+:::caution[把平台修改逻辑隔离开]
+`impl` 暴露的是平台原生对象，不是跨平台写入协议。同一段通用业务代码可以共享 `get(uri)` 的读取结果，但修改 Cookie 属性时应按 Android、iOS、JVM 分别实现。
+:::
+
+## 使用边界
+
+`CookieManager` 观察的是 WebView 的原生 Cookie 存储。它不暴露响应头、不区分主文档和子资源请求，也不会绕过浏览器引擎自身的 Cookie 匹配规则。
+
+| 需求 | 此 API 是否适合 | 说明 |
+| --- | --- | --- |
+| 展示当前站点可见 Cookie | 是 | 使用 `controller.cookies.get(uri)`。 |
+| 根据登录 Cookie 更新宿主 UI | 是 | 在页面加载结束或用户动作后读取快照。 |
+| 修改 Cookie 属性 | 是，平台专用 | 通过 `controller.cookies.impl` 使用 Android、iOS 或 JVM 桌面的原生修改入口。 |
+| 读取所有响应的 `Set-Cookie` 头 | 否 | 这属于网络层或平台原生拦截能力。 |
+| 精确审计每个子资源请求携带的 Cookie | 否 | WebView Cookie 存储只能给出按 URI 匹配后的视图。 |
+
+下一步可阅读 [Controller 导读](/zh/controller/)，了解 `cookies` 与导航、脚本和拦截器如何绑定到同一个 WebView 实例。

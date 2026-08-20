@@ -36,6 +36,7 @@ export default defineConfig({
 							items: [
 								{ label: 'Navigator', link: 'navigator', translations: { 'zh-CN': '导航器' } },
 								{ label: 'Interceptor', link: 'interceptor', translations: { 'zh-CN': '拦截器' } },
+								{ label: 'Cookie manager', link: 'cookie-manager', translations: { 'zh-CN': 'Cookie 管理器' } },
 								{ label: 'JavaScript interop', link: 'javascript-interop', translations: { 'zh-CN': 'JavaScript 互操作性' } },
 							],
 						},
