@@ -64,7 +64,7 @@ jobs:
 
   test-jvm-macos:
     if: ${{ inputs.RELEASE_LIB_PLATFORM_MACOS || inputs.RELEASE_LIB_CORE || inputs.RELEASE_LIB_JSBRIDGE }}
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
@@ -92,7 +92,7 @@ jobs:
 
   test-ios:
     if: ${{ inputs.RELEASE_LIB_CORE || inputs.RELEASE_LIB_JSBRIDGE }}
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
@@ -113,7 +113,7 @@ jobs:
       - test-jvm-macos
       - test-android
       - test-ios
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -155,7 +155,7 @@ jobs:
     if: ${{ inputs.RELEASE_LIB_JSBRIDGE }}
     needs:
       - release-core
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
@@ -231,7 +231,7 @@ jobs:
     if: ${{ inputs.RELEASE_LIB_PLATFORM_MACOS }}
     needs:
       - test-jvm-macos
-    runs-on: macos-15
+    runs-on: macos-latest
     permissions:
       contents: read
     steps:
