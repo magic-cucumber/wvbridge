@@ -5,6 +5,22 @@ description: Release history and notable changes for wvbridge.
 
 This page collects the published release notes for `wvbridge`. Each version links to its original [GitHub Release](https://github.com/magic-cucumber/wvbridge/releases).
 
+## 0.0.8 — 2026-11-01
+
+[View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.8)
+
+### Bug fixes
+
+- Fixed the Windows native library failing to load on users' computers due to debug runtime dependencies. Native libraries on all three desktop platforms now default to Release builds; sample tasks use Debug builds.
+
+### Features
+
+- Added `controller.cookies` to read cookies on Android, iOS, and JVM desktop, with platform implementations for writing, deleting, and clearing cookies. See the [Cookie manager guide](/en/cookie-manager/).
+
+### Breaking changes
+
+- Logging now defaults to `INFO` and higher levels. To restore full logging, import `top.kagg886.wvbridge.util.setMinLevel` and call `LoggerReceiver.setMinLevel(LoggerReceiver.Level.VERBOSE)`. The JVM logging interface also changed; update desktop platform libraries to `0.0.6`.
+
 ## 0.0.7 — 2026-08-12
 
 [View the GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.7)

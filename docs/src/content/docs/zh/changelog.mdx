@@ -5,6 +5,22 @@ description: wvbridge 的版本历史与重要变更。
 
 本页汇总 `wvbridge` 已发布的版本说明。每个版本都附有对应的 [GitHub Release](https://github.com/magic-cucumber/wvbridge/releases) 原文链接。
 
+## 0.0.8 — 2026-11-01
+
+[查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.8)
+
+### 错误修复
+
+- 修复 Windows 原生库依赖调试运行库而无法在用户电脑上加载的问题；三端原生库默认使用 Release 构建，示例任务使用 Debug 构建。
+
+### 功能新增
+
+- 新增 `controller.cookies`，支持在 Android、iOS 和 JVM 桌面读取 Cookie，并通过平台实现写入、删除和清空 Cookie。详见 [Cookie 管理指南](/zh/cookie-manager/)。
+
+### 破坏性变更
+
+- 日志默认仅输出 `INFO` 及以上级别；可通过 `LoggerReceiver.setMinLevel(LoggerReceiver.Level.VERBOSE)` 恢复完整日志，需导入 `top.kagg886.wvbridge.util.setMinLevel`。JVM 日志接口同步调整，桌面平台库需升级至 `0.0.6`。
+
 ## 0.0.7 — 2026-08-12
 
 [查看 GitHub Release](https://github.com/magic-cucumber/wvbridge/releases/tag/0.0.7)

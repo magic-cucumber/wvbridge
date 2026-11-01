@@ -22,7 +22,10 @@ val java17Launcher = extensions.getByType<JavaToolchainService>().launcherFor {
     languageVersion.set(JavaLanguageVersion.of(17))
 }
 
+val nativeBuildType = nativeBuildType()
+
 val processBuild = tasks.register<Exec>("processBuild") {
+    inputs.property("nativeBuildType", nativeBuildType)
     onlyIf {
         System.getProperty("os.name").startsWith("Linux")
     }
@@ -31,10 +34,8 @@ val processBuild = tasks.register<Exec>("processBuild") {
     commandLine(
         "bash", "-c",
         """
-            mkdir -p build && \
-            cd build && \
-            cmake .. && \
-            make
+            cmake -S . -B build/$nativeBuildType -DCMAKE_BUILD_TYPE=$nativeBuildType && \
+            cmake --build build/$nativeBuildType --config $nativeBuildType
         """.trimIndent()
     )
 }
@@ -42,7 +43,7 @@ val processBuild = tasks.register<Exec>("processBuild") {
 // Configure JVM processResources task
 tasks.named<ProcessResources>("processResources") {
     dependsOn(processBuild)
-    from(project.file("native/build/lib/libwvbridge.so"))
+    from(project.file("native/build/$nativeBuildType/lib/libwvbridge.so"))
 }
 
 

@@ -22,7 +22,10 @@ val java17Launcher = extensions.getByType<JavaToolchainService>().launcherFor {
     languageVersion.set(JavaLanguageVersion.of(17))
 }
 
+val nativeBuildType = nativeBuildType()
+
 val processBuild = tasks.register<Exec>("processBuild") {
+    inputs.property("nativeBuildType", nativeBuildType)
     onlyIf {
         System.getProperty("os.name").startsWith("Win")
     }
@@ -31,9 +34,9 @@ val processBuild = tasks.register<Exec>("processBuild") {
     commandLine(
         "powershell", "-NoProfile", "-Command",
         $$"""
-            cmake -S . -B build;
+            cmake -S . -B build/$${nativeBuildType} -DCMAKE_BUILD_TYPE=$${nativeBuildType};
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cmake --build build --config Debug;
+            cmake --build build/$${nativeBuildType} --config $${nativeBuildType};
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         """.trimIndent()
     )
@@ -41,7 +44,7 @@ val processBuild = tasks.register<Exec>("processBuild") {
 
 tasks.named<ProcessResources>("processResources") {
     dependsOn(processBuild)
-    from(project.file("native/build/wvbridge.dll"))
+    from(project.file("native/build/$nativeBuildType/wvbridge.dll"))
 }
 
 publishing(KotlinJvm())

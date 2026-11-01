@@ -1,3 +1,5 @@
+import org.gradle.api.Project
+
 /**
  * ================================================
  * Author:     886kagg
@@ -9,6 +11,19 @@ enum class JvmTarget {
     MACOS,
     WINDOWS,
     LINUX;
+}
+
+fun Project.nativeBuildType(): String {
+    val invocationDir = gradle.startParameter.projectDir ?: gradle.startParameter.currentDir
+    val relativeProjectPath = invocationDir.relativeTo(rootDir).invariantSeparatorsPath
+        .split('/').filter { it.isNotEmpty() && it != "." }.joinToString(":")
+    val requestedTasks = gradle.startParameter.taskNames.map { task ->
+        if (task.startsWith(":")) task else ":$relativeProjectPath:$task".replace("::", ":")
+    }
+    // Mixed sample/library invocations use Release so published libraries stay release builds.
+    return if (requestedTasks.isNotEmpty() && requestedTasks.all {
+            it.startsWith(":sample:") && !it.substringAfterLast(':').startsWith("publish", ignoreCase = true)
+        }) "Debug" else "Release"
 }
 
 val hostTarget by lazy {
