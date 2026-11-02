@@ -1,0 +1,74 @@
+---
+title: Packaging
+description: Configure ProGuard rules for JVM desktop release builds.
+---
+
+## Obfuscation configuration
+
+**Include the wvbridge keep rules when packaging your desktop application.** Otherwise, classes, methods, or fields accessed through JNI may be removed or renamed, making the wvbridge module unusable.
+
+The rules are maintained in [`proguard-rules.pro`](https://github.com/magic-cucumber/wvbridge/blob/main/core/src/jvmMain/resources/META-INF/wvbridge/proguard-rules.pro). Copy this file into your desktop application module and register it in that module's `build.gradle.kts`:
+
+```kotlin
+compose.desktop {
+    application {
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("proguard-rules.pro"))
+        }
+    }
+}
+```
+
+:::caution
+The rules in the JVM JAR are located at `META-INF/wvbridge/proguard-rules.pro`. Include them explicitly rather than relying on your packaging tool to discover them automatically. Update your copy when upgrading wvbridge.
+Alternatively, aggregate rules from JVM JARs in your build script to apply dependency keep rules automatically, without copying and maintaining each dependency's rules in your application. The following example collects dependency rules and ServiceLoader implementation declarations:
+
+```kotlin
+gradle.projectsEvaluated {
+    tasks.named("proguardReleaseJars").configure {
+        doFirst {
+            layout.buildDirectory.file("compose/binaries/main-release/proguard").get().asFile.mkdirs()
+        }
+    }
+}
+
+tasks.withType(AbstractProguardTask::class.java) {
+    val proguardFile = File.createTempFile("tmp", ".pro", temporaryDir)
+    proguardFile.deleteOnExit()
+
+    compose.desktop.application.buildTypes.release.proguard {
+        configurationFiles.from(proguardFile, file("core-rules.pro"), file("desktop-rules.pro"))
+        optimize = true
+        obfuscate = true
+        joinOutputJars = true
+    }
+
+    doFirst {
+        proguardFile.bufferedWriter().use { proguardFileWriter ->
+            sourceSets["desktopMain"].runtimeClasspath.filter { it.extension == "jar" }.forEach { jar ->
+                val zip = zipTree(jar)
+                zip.matching {
+                    include("META-INF/**/*.pro")
+                }.forEach { file ->
+                    proguardFileWriter.appendLine("########   ${jar.name} ${file.name}")
+                    val content = file.readLines()
+                        .map { line -> line.replace("kotlin.Metadata", "kotlin.AAA") }
+                        .filter { line -> "keepkotlinmetadata" !in line }
+                    content.forEach { line -> proguardFileWriter.appendLine(line) }
+                }
+                zip.matching { include("META-INF/services/*") }.forEach {
+                    it.readLines().forEach { cls ->
+                        val rule = "-keep class $cls"
+                        proguardFileWriter.appendLine(rule)
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+`META-INF/**/*.pro` collects all `.pro` files under `META-INF`, including the wvbridge rules. Confirm that these files in your dependencies are suitable for aggregation. Adjust `desktopMain`, task names, and your application's own `core-rules.pro` and `desktop-rules.pro` files for your project. The Kotlin Metadata rewriting in this example is additional processing; decide whether to retain it for your project.
+:::
+
+The rules cover native entry points, message and loading callbacks, cookie data objects, and platform settings. After configuration, create an installer using a release packaging task and verify page loading, JavaScript messages, and cookies.

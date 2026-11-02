@@ -1,0 +1,74 @@
+---
+title: 打包说明
+description: 为 JVM 桌面端发布版本配置 ProGuard 混淆规则。
+---
+
+## 混淆配置
+
+**桌面端打包时必须接入 wvbridge 的混淆规则**，否则 JNI 使用的类、方法或字段可能被删除或改名，导致 wvbridge 模块无法使用。
+
+规则维护在仓库的 [`proguard-rules.pro`](https://github.com/magic-cucumber/wvbridge/blob/main/core/src/jvmMain/resources/META-INF/wvbridge/proguard-rules.pro) 中。将其复制到桌面应用模块，并在该模块的 `build.gradle.kts` 中配置：
+
+```kotlin
+compose.desktop {
+    application {
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("proguard-rules.pro"))
+        }
+    }
+}
+```
+
+:::caution
+JVM JAR 内的规则位于 `META-INF/wvbridge/proguard-rules.pro`，请显式接入，不要依赖打包工具自动读取。升级 wvbridge 后，也应同步规则文件。
+也可以在构建脚本中统一聚合 JVM JAR 内的规则，自动接入依赖提供的混淆配置，无需在应用内逐份复制维护。下面的示例同时收集依赖规则与 ServiceLoader 实现类声明：
+
+```kotlin
+gradle.projectsEvaluated {
+    tasks.named("proguardReleaseJars").configure {
+        doFirst {
+            layout.buildDirectory.file("compose/binaries/main-release/proguard").get().asFile.mkdirs()
+        }
+    }
+}
+
+tasks.withType(AbstractProguardTask::class.java) {
+    val proguardFile = File.createTempFile("tmp", ".pro", temporaryDir)
+    proguardFile.deleteOnExit()
+
+    compose.desktop.application.buildTypes.release.proguard {
+        configurationFiles.from(proguardFile, file("core-rules.pro"), file("desktop-rules.pro"))
+        optimize = true
+        obfuscate = true
+        joinOutputJars = true
+    }
+
+    doFirst {
+        proguardFile.bufferedWriter().use { proguardFileWriter ->
+            sourceSets["desktopMain"].runtimeClasspath.filter { it.extension == "jar" }.forEach { jar ->
+                val zip = zipTree(jar)
+                zip.matching {
+                    include("META-INF/**/*.pro")
+                }.forEach { file ->
+                    proguardFileWriter.appendLine("########   ${jar.name} ${file.name}")
+                    val content = file.readLines()
+                        .map { line -> line.replace("kotlin.Metadata", "kotlin.AAA") }
+                        .filter { line -> "keepkotlinmetadata" !in line }
+                    content.forEach { line -> proguardFileWriter.appendLine(line) }
+                }
+                zip.matching { include("META-INF/services/*") }.forEach {
+                    it.readLines().forEach { cls ->
+                        val rule = "-keep class $cls"
+                        proguardFileWriter.appendLine(rule)
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+`META-INF/**/*.pro` 会收集 `META-INF` 下所有 `.pro` 文件，包括 wvbridge 的规则；使用前应确认依赖中的这些文件均适合聚合。请按项目调整 `desktopMain`、任务名及应用自己的 `core-rules.pro`、`desktop-rules.pro`；示例中的 Kotlin Metadata 重写属于额外处理，也应按项目需求决定是否保留。
+:::
+
+规则覆盖原生方法入口、消息与加载回调、Cookie 数据对象和平台配置。配置后，使用 release 打包任务生成安装包，并验证页面加载、JavaScript 消息和 Cookie 功能。

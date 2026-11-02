@@ -28,6 +28,7 @@ export default defineConfig({
 						{ label: 'Changelog', link: 'changelog', translations: { 'zh-CN': '更新日志' } },
 						{ label: 'Installation', slug: 'installation', translations: { 'zh-CN': '安装' } },
 						{ label: 'Quick start', link: 'quick-start', translations: { 'zh-CN': '快速开始' } },
+						{ label: 'Packaging', link: 'packaging', translations: { 'zh-CN': '打包说明' } },
 						{ label: 'Controller', link: 'controller', translations: { 'zh-CN': 'Controller 导读' } },
 						{ label: 'Configuration', link: 'configuration', translations: { 'zh-CN': '配置 WebViewConfig' } },
 						{
